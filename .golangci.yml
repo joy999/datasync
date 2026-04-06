@@ -1,0 +1,59 @@
+run:
+  timeout: 5m
+  go: '1.23'
+
+linters:
+  enable:
+    - gofmt
+    - govet
+    - errcheck
+    - staticcheck
+    - unused
+    - gosimple
+    - structcheck
+    - varcheck
+    - ineffassign
+    - deadcode
+    - typecheck
+    - gosec
+    - unconvert
+    - dupl
+    - goconst
+    - gocyclo
+    - goimports
+    - misspell
+    - nakedret
+    - prealloc
+    - exportloopref
+
+linters-settings:
+  gofmt:
+    simplify: true
+  govet:
+    enable-all: true
+    disable:
+      - shadow
+  gocyclo:
+    min-complexity: 15
+  dupl:
+    threshold: 100
+  goconst:
+    min-len: 3
+    min-occurrences: 3
+  misspell:
+    locale: US
+
+issues:
+  exclude-rules:
+    # Exclude some linters from running on tests files
+    - path: _test\.go
+      linters:
+        - gosec
+        - dupl
+        - gocyclo
+        - errcheck
+        - govet
+
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0

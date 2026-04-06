@@ -1,5 +1,10 @@
 # DataSync
 
+[![CI](https://github.com/joy999/datasync/actions/workflows/ci.yml/badge.svg)](https://github.com/joy999/datasync/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/joy999/datasync)](https://goreportcard.com/report/github.com/joy999/datasync)
+[![Go Reference](https://pkg.go.dev/badge/github.com/joy999/datasync.svg)](https://pkg.go.dev/github.com/joy999/datasync)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 DataSync 是一个基于 etcd-io/raft 的分布式数据同步框架，使用 NATS 作为网络传输层，支持多节点组之间的数据同步。
 
 ## 特性
