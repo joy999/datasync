@@ -6,8 +6,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/joy999/datasync/pkg/codec"
 	datasync "github.com/joy999/datasync/pkg"
+	"github.com/joy999/datasync/pkg/codec"
 )
 
 // ExampleRegistry_Register 展示如何注册驱动
@@ -111,7 +111,7 @@ func (m *MockDriver) Unmarshal(d []byte) (*datasync.DataRecord, error) {
 	return &datasync.DataRecord{ID: datasync.DataID(d)}, nil
 }
 func (m *MockDriver) Initialize(_ context.Context, _ map[string]interface{}) error { return nil }
-func (m *MockDriver) Close() error                                               { return nil }
+func (m *MockDriver) Close() error                                                 { return nil }
 func (m *MockDriver) GetRecords(_ context.Context, _ string, _ string, _ int) ([]*datasync.DataRecord, string, error) {
 	return nil, "", nil
 }

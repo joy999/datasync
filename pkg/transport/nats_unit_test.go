@@ -1,3 +1,4 @@
+//go:build !integration
 // +build !integration
 
 package transport
@@ -86,9 +87,9 @@ func TestNATSConfig_AuthOptions(t *testing.T) {
 // TestNATSConfig_TLSOptions 测试 TLS 配置
 func TestNATSConfig_TLSOptions(t *testing.T) {
 	tests := []struct {
-		name       string
-		config     *NATSConfig
-		expectTLS  bool
+		name      string
+		config    *NATSConfig
+		expectTLS bool
 	}{
 		{
 			name: "with_tls",

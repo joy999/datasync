@@ -53,7 +53,7 @@ func ExampleCodec_DecodeSyncMessage() {
 
 	// 假设这是接收到的数据
 	// 实际场景中，这些数据来自网络传输
-	encodedData := []byte{/* ... */}
+	encodedData := []byte{ /* ... */ }
 
 	// 解码信封和消息
 	env, msg, err := codec.DecodeSyncMessage(encodedData)

@@ -16,11 +16,6 @@ jobs:
         image: nats:latest
         ports:
           - 4222:4222
-        options: >-
-          --health-cmd "nats --server nats://localhost:4222 ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
 
     strategy:
       matrix:
@@ -55,15 +50,6 @@ jobs:
       run: go test -v -run "^TestExample" ./...
       env:
         NATS_URL: nats://localhost:4222
-
-    - name: Wait for NATS to be ready
-      run: |
-        for i in {1..10}; do
-          nc -z localhost 4222 && echo "NATS is ready" && exit 0
-          echo "Waiting for NATS..."
-          sleep 2
-        done
-        echo "NATS failed to start" && exit 1
 
     - name: Run integration tests
       run: go test -v -tags=integration ./...

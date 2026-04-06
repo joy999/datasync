@@ -227,7 +227,7 @@ func (m *benchMockDriver) Unmarshal(d []byte) (*datasync.DataRecord, error) {
 	return &datasync.DataRecord{Payload: d}, nil
 }
 func (m *benchMockDriver) Initialize(_ context.Context, _ map[string]interface{}) error { return nil }
-func (m *benchMockDriver) Close() error                                               { return nil }
+func (m *benchMockDriver) Close() error                                                 { return nil }
 func (m *benchMockDriver) GetRecords(_ context.Context, _ string, _ string, _ int) ([]*datasync.DataRecord, string, error) {
 	return nil, "", nil
 }
