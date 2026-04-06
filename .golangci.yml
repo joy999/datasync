@@ -10,10 +10,7 @@ linters:
     - staticcheck
     - unused
     - gosimple
-    - structcheck
-    - varcheck
     - ineffassign
-    - deadcode
     - typecheck
     - gosec
     - unconvert
@@ -24,7 +21,7 @@ linters:
     - misspell
     - nakedret
     - prealloc
-    - exportloopref
+    - copyloopvar
 
 linters-settings:
   gofmt:
@@ -53,6 +50,7 @@ issues:
         - gocyclo
         - errcheck
         - govet
+        - copyloopvar
 
   exclude-use-default: false
   max-issues-per-linter: 0
