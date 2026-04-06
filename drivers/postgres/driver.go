@@ -153,9 +153,17 @@ func (d *Driver) GetRecords(ctx context.Context, dataType string, cursor string,
 	}
 
 	// 计算下一个 cursor
+	// 查询多一条记录来判断是否有下一页
 	nextCursor := ""
 	if len(records) == limit {
-		nextCursor = fmt.Sprintf("%d", offset+limit)
+		// 查询是否还有更多记录
+		// nolint:gosec - tableName is sanitized by sanitizeTableName
+		checkQuery := fmt.Sprintf("SELECT 1 FROM %s ORDER BY id LIMIT 1 OFFSET %d", tableName, offset+limit)
+		var exists int
+		err := d.db.QueryRowContext(ctx, checkQuery).Scan(&exists)
+		if err == nil {
+			nextCursor = fmt.Sprintf("%d", offset+limit)
+		}
 	}
 
 	return records, nextCursor, nil
