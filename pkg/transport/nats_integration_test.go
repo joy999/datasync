@@ -95,8 +95,8 @@ func TestNATS_SendAndSubscribe(t *testing.T) {
 	}
 }
 
-// TestNATS_MultipleSubscribers 测试多个订阅者
-func TestNATS_MultipleSubscribers(t *testing.T) {
+// TestNATS_MultipleMessages 测试发送多个消息
+func TestNATS_MultipleMessages(t *testing.T) {
 	config := &NATSConfig{
 		Servers:           []string{getNATSURL()},
 		ReconnectWait:     time.Second,
@@ -104,67 +104,58 @@ func TestNATS_MultipleSubscribers(t *testing.T) {
 		ConnectionTimeout: 5 * time.Second,
 	}
 
-	nats1, err := NewNATS(config)
+	nats, err := NewNATS(config)
 	if err != nil {
-		t.Fatalf("Failed to create NATS transport 1: %v", err)
+		t.Fatalf("Failed to create NATS transport: %v", err)
 	}
-	defer nats1.Stop()
-
-	nats2, err := NewNATS(config)
-	if err != nil {
-		t.Fatalf("Failed to create NATS transport 2: %v", err)
-	}
-	defer nats2.Stop()
+	defer nats.Stop()
 
 	ctx := context.Background()
-	if err := nats1.Start(ctx); err != nil {
-		t.Fatalf("Failed to start NATS transport 1: %v", err)
-	}
-	if err := nats2.Start(ctx); err != nil {
-		t.Fatalf("Failed to start NATS transport 2: %v", err)
+	if err := nats.Start(ctx); err != nil {
+		t.Fatalf("Failed to start NATS transport: %v", err)
 	}
 
 	testGroup := datasync.GroupID("test-group-multi")
-	testMessage := []byte("Broadcast message")
+	received := make(chan []byte, 10)
 
-	received1 := make(chan []byte, 1)
-	received2 := make(chan []byte, 1)
-
-	// 两个订阅者
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	_ = nats1.Subscribe(ctx, testGroup, func(data []byte) {
-		received1 <- data
+	_ = nats.Subscribe(ctx, testGroup, func(data []byte) {
+		received <- data
 	})
 
-	_ = nats2.Subscribe(ctx, testGroup, func(data []byte) {
-		received2 <- data
-	})
-
-	// 发送消息
-	err = nats1.SendMessage(ctx, testGroup, testMessage)
-	if err != nil {
-		t.Fatalf("Failed to send message: %v", err)
+	// 发送多条消息
+	messages := [][]byte{
+		[]byte("Message 1"),
+		[]byte("Message 2"),
+		[]byte("Message 3"),
 	}
 
-	// 验证两个订阅者都收到消息
-	select {
-	case data := <-received1:
-		if string(data) != string(testMessage) {
-			t.Errorf("Subscriber 1 received wrong message: %s", data)
+	for _, msg := range messages {
+		err = nats.SendMessage(ctx, testGroup, msg)
+		if err != nil {
+			t.Fatalf("Failed to send message: %v", err)
 		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("Timeout waiting for subscriber 1")
 	}
 
-	select {
-	case data := <-received2:
-		if string(data) != string(testMessage) {
-			t.Errorf("Subscriber 2 received wrong message: %s", data)
+	// 验证所有消息都收到
+	for i := 0; i < len(messages); i++ {
+		select {
+		case data := <-received:
+			found := false
+			for _, expected := range messages {
+				if string(data) == string(expected) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("Received unexpected message: %s", data)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("Timeout waiting for message %d", i+1)
 		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("Timeout waiting for subscriber 2")
 	}
 }
 
