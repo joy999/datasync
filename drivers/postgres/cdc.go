@@ -205,7 +205,9 @@ func (d *Driver) GetCDCRecordsBySequence(ctx context.Context, sequence uint64, l
 	if err != nil {
 		return nil, fmt.Errorf("failed to query CDC records by sequence: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	var records []*CDCRecord
 	for rows.Next() {
@@ -281,7 +283,7 @@ func (d *Driver) DeleteRecord(ctx context.Context, dataType string, id datasync.
 
 	// 获取旧数据用于 CDC
 	var oldDataJSON []byte
-	// nolint:gosec - tableName is sanitized by sanitizeTableName
+	//nolint:gosec // tableName is sanitized by sanitizeTableName
 	selectQuery := fmt.Sprintf("SELECT data FROM %s WHERE id = $1", tableName)
 	err = tx.QueryRowContext(ctx, selectQuery, string(id)).Scan(&oldDataJSON)
 	if err != nil && err != sql.ErrNoRows {
@@ -289,7 +291,7 @@ func (d *Driver) DeleteRecord(ctx context.Context, dataType string, id datasync.
 	}
 
 	// 删除记录
-	// nolint:gosec - tableName is sanitized by sanitizeTableName
+	//nolint:gosec // tableName is sanitized by sanitizeTableName
 	deleteQuery := fmt.Sprintf("DELETE FROM %s WHERE id = $1", tableName)
 	if _, err := tx.ExecContext(ctx, deleteQuery, string(id)); err != nil {
 		return fmt.Errorf("failed to delete record: %w", err)

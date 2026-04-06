@@ -123,7 +123,7 @@ func (d *Driver) GetRecords(ctx context.Context, dataType string, cursor string,
 		_, _ = fmt.Sscanf(cursor, "%d", &offset)
 	}
 
-	// nolint:gosec - tableName is sanitized by sanitizeTableName
+	//nolint:gosec // tableName is sanitized by sanitizeTableName
 	query := fmt.Sprintf(`
 		SELECT id, data, version, created_at, updated_at 
 		FROM %s 
@@ -157,7 +157,7 @@ func (d *Driver) GetRecords(ctx context.Context, dataType string, cursor string,
 	nextCursor := ""
 	if len(records) == limit {
 		// 查询是否还有更多记录
-		// nolint:gosec - tableName is sanitized by sanitizeTableName
+		//nolint:gosec // tableName is sanitized by sanitizeTableName
 		checkQuery := fmt.Sprintf("SELECT 1 FROM %s ORDER BY id LIMIT 1 OFFSET %d", tableName, offset+limit)
 		var exists int
 		err := d.db.QueryRowContext(ctx, checkQuery).Scan(&exists)
@@ -179,7 +179,7 @@ func (d *Driver) GetRecord(ctx context.Context, dataType string, id datasync.Dat
 	}
 
 	tableName := d.sanitizeTableName(dataType)
-	// nolint:gosec - tableName is sanitized by sanitizeTableName
+	//nolint:gosec // tableName is sanitized by sanitizeTableName
 	query := fmt.Sprintf(`
 		SELECT id, data, version, created_at, updated_at 
 		FROM %s 
@@ -225,7 +225,7 @@ func (d *Driver) ApplyRecord(ctx context.Context, record *datasync.DataRecord) e
 
 	// 检查记录是否存在
 	var exists bool
-	// nolint:gosec - tableName is sanitized by sanitizeTableName
+	//nolint:gosec // tableName is sanitized by sanitizeTableName
 	checkQuery := fmt.Sprintf("SELECT EXISTS(SELECT 1 FROM %s WHERE id = $1)", tableName)
 	if err := tx.QueryRowContext(ctx, checkQuery, string(record.ID)).Scan(&exists); err != nil {
 		return fmt.Errorf("failed to check record existence: %w", err)
@@ -243,7 +243,7 @@ func (d *Driver) ApplyRecord(ctx context.Context, record *datasync.DataRecord) e
 	if exists {
 		changeType = "UPDATE"
 		// 更新记录
-		// nolint:gosec - tableName is sanitized by sanitizeTableName
+		//nolint:gosec // tableName is sanitized by sanitizeTableName
 		updateQuery := fmt.Sprintf(`
 			UPDATE %s 
 			SET data = $1, version = $2, updated_at = $3 
@@ -254,7 +254,7 @@ func (d *Driver) ApplyRecord(ctx context.Context, record *datasync.DataRecord) e
 		}
 	} else {
 		// 插入记录
-		// nolint:gosec - tableName is sanitized by sanitizeTableName
+		//nolint:gosec // tableName is sanitized by sanitizeTableName
 		insertQuery := fmt.Sprintf(`
 			INSERT INTO %s (id, data, version, created_at, updated_at) 
 			VALUES ($1, $2, $3, $4, $5)
@@ -341,7 +341,7 @@ func (d *Driver) GetLatestVersion(ctx context.Context, dataType string, id datas
 	}
 
 	tableName := d.sanitizeTableName(dataType)
-	// nolint:gosec - tableName is sanitized by sanitizeTableName
+	//nolint:gosec // tableName is sanitized by sanitizeTableName
 	query := fmt.Sprintf("SELECT COALESCE(MAX(version), 0) FROM %s WHERE id = $1", tableName)
 
 	var version int64
