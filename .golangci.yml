@@ -52,6 +52,11 @@ issues:
         - errcheck
         - govet
         - copyloopvar
+    # SQL string formatting in postgres driver - table names are validated
+    - path: drivers/postgres/.*\.go
+      linters:
+        - gosec
+      text: "G201"
 
   exclude-use-default: false
   max-issues-per-linter: 0
