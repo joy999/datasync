@@ -218,11 +218,11 @@ func (d *Driver) GetCheckpointUpdatedAt(ctx context.Context, dataType string) (t
 
 // SyncStatus 同步状态
 type SyncStatus struct {
-	DataType        string
-	LastSequence    uint64
-	LatestSequence  uint64
-	PendingCount    uint64
-	LastUpdatedAt   time.Time
+	DataType       string
+	LastSequence   uint64
+	LatestSequence uint64
+	PendingCount   uint64
+	LastUpdatedAt  time.Time
 }
 
 // GetSyncStatus 获取指定数据类型的同步状态

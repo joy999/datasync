@@ -24,15 +24,15 @@ const (
 
 // CDCRecord CDC 记录结构
 type CDCRecord struct {
-	ID        uint64
-	DataType  string
-	RecordID  string
+	ID         uint64
+	DataType   string
+	RecordID   string
 	ChangeType ChangeType
-	Payload   []byte
-	Version   int64
+	Payload    []byte
+	Version    int64
 	SourceNode string
-	GroupID   string
-	CreatedAt time.Time
+	GroupID    string
+	CreatedAt  time.Time
 }
 
 // ToDataRecord 将 CDC 记录转换为 DataRecord
