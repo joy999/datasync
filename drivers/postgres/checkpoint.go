@@ -119,7 +119,9 @@ func (d *Driver) GetAllCheckpoints(ctx context.Context) (map[string]uint64, erro
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all checkpoints: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	checkpoints := make(map[string]uint64)
 	for rows.Next() {

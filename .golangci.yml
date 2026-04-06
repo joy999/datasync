@@ -52,12 +52,6 @@ issues:
         - errcheck
         - govet
         - copyloopvar
-    # Exclude postgres driver from some linters (needs refactoring)
-    - path: drivers/postgres/
-      linters:
-        - errcheck
-        - gosec
-        - unused
 
   exclude-use-default: false
   max-issues-per-linter: 0

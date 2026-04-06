@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
-	"strings"
 	"sync"
 	"time"
 
@@ -62,7 +61,7 @@ func (d *Driver) Initialize(ctx context.Context, initConfig map[string]interface
 	}
 
 	if err := db.PingContext(ctx); err != nil {
-		db.Close()
+		_ = db.Close()
 		return fmt.Errorf("failed to ping database: %w", err)
 	}
 
@@ -71,13 +70,13 @@ func (d *Driver) Initialize(ctx context.Context, initConfig map[string]interface
 
 	// 创建 CDC 表
 	if err := d.createCDCTable(ctx); err != nil {
-		d.db.Close()
+		_ = d.db.Close()
 		return fmt.Errorf("failed to create CDC table: %w", err)
 	}
 
 	// 创建 Checkpoint 表
 	if err := d.createCheckpointTable(ctx); err != nil {
-		d.db.Close()
+		_ = d.db.Close()
 		return fmt.Errorf("failed to create checkpoint table: %w", err)
 	}
 
@@ -121,9 +120,10 @@ func (d *Driver) GetRecords(ctx context.Context, dataType string, cursor string,
 	tableName := d.sanitizeTableName(dataType)
 	offset := 0
 	if cursor != "" {
-		fmt.Sscanf(cursor, "%d", &offset)
+		_, _ = fmt.Sscanf(cursor, "%d", &offset)
 	}
 
+	// nolint:gosec - tableName is sanitized by sanitizeTableName
 	query := fmt.Sprintf(`
 		SELECT id, data, version, created_at, updated_at 
 		FROM %s 
@@ -135,7 +135,9 @@ func (d *Driver) GetRecords(ctx context.Context, dataType string, cursor string,
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to query records: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	var records []*datasync.DataRecord
 	for rows.Next() {
@@ -169,6 +171,7 @@ func (d *Driver) GetRecord(ctx context.Context, dataType string, id datasync.Dat
 	}
 
 	tableName := d.sanitizeTableName(dataType)
+	// nolint:gosec - tableName is sanitized by sanitizeTableName
 	query := fmt.Sprintf(`
 		SELECT id, data, version, created_at, updated_at 
 		FROM %s 
@@ -208,10 +211,13 @@ func (d *Driver) ApplyRecord(ctx context.Context, record *datasync.DataRecord) e
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		_ = tx.Rollback()
+	}()
 
 	// 检查记录是否存在
 	var exists bool
+	// nolint:gosec - tableName is sanitized by sanitizeTableName
 	checkQuery := fmt.Sprintf("SELECT EXISTS(SELECT 1 FROM %s WHERE id = $1)", tableName)
 	if err := tx.QueryRowContext(ctx, checkQuery, string(record.ID)).Scan(&exists); err != nil {
 		return fmt.Errorf("failed to check record existence: %w", err)
@@ -229,6 +235,7 @@ func (d *Driver) ApplyRecord(ctx context.Context, record *datasync.DataRecord) e
 	if exists {
 		changeType = "UPDATE"
 		// 更新记录
+		// nolint:gosec - tableName is sanitized by sanitizeTableName
 		updateQuery := fmt.Sprintf(`
 			UPDATE %s 
 			SET data = $1, version = $2, updated_at = $3 
@@ -239,6 +246,7 @@ func (d *Driver) ApplyRecord(ctx context.Context, record *datasync.DataRecord) e
 		}
 	} else {
 		// 插入记录
+		// nolint:gosec - tableName is sanitized by sanitizeTableName
 		insertQuery := fmt.Sprintf(`
 			INSERT INTO %s (id, data, version, created_at, updated_at) 
 			VALUES ($1, $2, $3, $4, $5)
@@ -299,7 +307,9 @@ func (d *Driver) GetDataTypes(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to query table names: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	var types []string
 	for rows.Next() {
@@ -323,6 +333,7 @@ func (d *Driver) GetLatestVersion(ctx context.Context, dataType string, id datas
 	}
 
 	tableName := d.sanitizeTableName(dataType)
+	// nolint:gosec - tableName is sanitized by sanitizeTableName
 	query := fmt.Sprintf("SELECT COALESCE(MAX(version), 0) FROM %s WHERE id = $1", tableName)
 
 	var version int64
@@ -394,12 +405,4 @@ func (d *Driver) scanRecord(sc scanner, dataType string) (*datasync.DataRecord, 
 		Timestamp: updatedAt,
 		Payload:   dataJSON,
 	}, nil
-}
-
-// ensureTablePrefix 确保表名有特定前缀（可选功能）
-func (d *Driver) ensureTablePrefix(tableName, prefix string) string {
-	if prefix != "" && !strings.HasPrefix(tableName, prefix) {
-		return prefix + tableName
-	}
-	return tableName
 }
