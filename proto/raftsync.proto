@@ -1,0 +1,188 @@
+syntax = "proto3";
+
+package raftsync;
+
+option go_package = "github.com/joy999/datasync/proto";
+
+import "google/protobuf/timestamp.proto";
+
+// NodeInfo 节点信息
+message NodeInfo {
+  string id = 1;
+  string address = 2;
+  string group_id = 3;
+  map<string, string> metadata = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}
+
+// NodeGroupInfo 节点组信息
+message NodeGroupInfo {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  repeated string node_ids = 4;
+  repeated string outbound_syncs = 5;
+  repeated string inbound_syncs = 6;
+  map<string, string> metadata = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+}
+
+// DataRecord 数据记录
+message DataRecord {
+  string id = 1;
+  string type = 2;
+  int64 version = 3;
+  google.protobuf.Timestamp timestamp = 4;
+  bytes payload = 5;
+  map<string, string> metadata = 6;
+}
+
+// SyncMessage 同步消息
+message SyncMessage {
+  enum SyncType {
+    UNKNOWN = 0;
+    FULL = 1;
+    INCREMENTAL = 2;
+    DELETE = 3;
+    HEARTBEAT = 4;
+  }
+  
+  string message_id = 1;
+  SyncType type = 2;
+  string source_node = 3;
+  string source_group = 4;
+  string target_group = 5;
+  repeated DataRecord records = 6;
+  
+  // 用于全量同步的分页
+  string cursor = 7;
+  bool has_more = 8;
+  
+  google.protobuf.Timestamp timestamp = 9;
+}
+
+// SyncRequest 同步请求
+message SyncRequest {
+  string request_id = 1;
+  string source_group = 2;
+  string target_group = 3;
+  SyncMessage.SyncType sync_type = 4;
+  repeated string data_types = 5;
+  
+  // 增量同步的时间戳
+  google.protobuf.Timestamp since = 6;
+  
+  // 分页游标
+  string cursor = 7;
+  int32 limit = 8;
+}
+
+// SyncResponse 同步响应
+message SyncResponse {
+  string request_id = 1;
+  bool success = 2;
+  string error_message = 3;
+  repeated DataRecord records = 4;
+  string cursor = 5;
+  bool has_more = 6;
+  google.protobuf.Timestamp timestamp = 7;
+}
+
+// RaftMessage Raft 消息封装
+message RaftMessage {
+  enum MessageType {
+    UNKNOWN = 0;
+    ENTRY = 1;
+    SNAPSHOT = 2;
+    CONFIG = 3;
+  }
+  
+  MessageType type = 1;
+  bytes data = 2;
+  uint64 term = 3;
+  uint64 index = 4;
+}
+
+// DiscoveryMessage 节点发现消息
+message DiscoveryMessage {
+  enum MessageType {
+    UNKNOWN = 0;
+    JOIN = 1;
+    LEAVE = 2;
+    HEARTBEAT = 3;
+    QUERY = 4;
+    RESPONSE = 5;
+  }
+  
+  MessageType type = 1;
+  NodeInfo node = 2;
+  repeated NodeInfo nodes = 3;
+  google.protobuf.Timestamp timestamp = 4;
+}
+
+// AuthMessage 认证消息
+message AuthMessage {
+  enum MessageType {
+    UNKNOWN = 0;
+    AUTHENTICATE = 1;
+    AUTH_RESPONSE = 2;
+    CHALLENGE = 3;
+  }
+  
+  MessageType type = 1;
+  string node_id = 2;
+  string token = 3;
+  bytes certificate = 4;
+  bool success = 5;
+  string error_message = 6;
+}
+
+// ConfigChange 配置变更
+message ConfigChange {
+  enum ChangeType {
+    UNKNOWN = 0;
+    ADD_NODE = 1;
+    REMOVE_NODE = 2;
+    UPDATE_GROUP = 3;
+    UPDATE_SYNC = 4;
+  }
+  
+  ChangeType type = 1;
+  NodeInfo node = 2;
+  NodeGroupInfo group = 3;
+  SyncConfig sync_config = 4;
+}
+
+// SyncConfig 同步配置
+message SyncConfig {
+  enum Direction {
+    UNKNOWN = 0;
+    OUTBOUND = 1;
+    INBOUND = 2;
+    BIDIRECTIONAL = 3;
+  }
+  
+  string source_group = 1;
+  string target_group = 2;
+  Direction direction = 3;
+  SyncFilter filter = 4;
+  bool enabled = 5;
+}
+
+// SyncFilter 同步过滤器
+message SyncFilter {
+  repeated string data_types = 1;
+  repeated string exclude_data_types = 2;
+  map<string, string> custom_filter = 3;
+}
+
+// SnapshotData 快照数据
+message SnapshotData {
+  string group_id = 1;
+  uint64 term = 2;
+  uint64 index = 3;
+  repeated DataRecord records = 4;
+  map<string, string> metadata = 5;
+}
