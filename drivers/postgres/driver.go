@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"sync"
 	"time"
 
@@ -117,13 +116,15 @@ func (d *Driver) GetRecords(ctx context.Context, dataType string, cursor string,
 		return nil, "", fmt.Errorf("driver is closed")
 	}
 
-	tableName := d.sanitizeTableName(dataType)
+	if err := d.validateTableName(dataType); err != nil {
+		return nil, "", fmt.Errorf("invalid data type: %w", err)
+	}
+	tableName := dataType
 	offset := 0
 	if cursor != "" {
 		_, _ = fmt.Sscanf(cursor, "%d", &offset)
 	}
 
-	//nolint:gosec // tableName is sanitized by sanitizeTableName
 	query := fmt.Sprintf(`
 		SELECT id, data, version, created_at, updated_at 
 		FROM %s 
@@ -157,7 +158,6 @@ func (d *Driver) GetRecords(ctx context.Context, dataType string, cursor string,
 	nextCursor := ""
 	if len(records) == limit {
 		// 查询是否还有更多记录
-		//nolint:gosec // tableName is sanitized by sanitizeTableName
 		checkQuery := fmt.Sprintf("SELECT 1 FROM %s ORDER BY id LIMIT 1 OFFSET %d", tableName, offset+limit)
 		var exists int
 		err := d.db.QueryRowContext(ctx, checkQuery).Scan(&exists)
@@ -178,8 +178,10 @@ func (d *Driver) GetRecord(ctx context.Context, dataType string, id datasync.Dat
 		return nil, fmt.Errorf("driver is closed")
 	}
 
-	tableName := d.sanitizeTableName(dataType)
-	//nolint:gosec // tableName is sanitized by sanitizeTableName
+	if err := d.validateTableName(dataType); err != nil {
+		return nil, fmt.Errorf("invalid data type: %w", err)
+	}
+	tableName := dataType
 	query := fmt.Sprintf(`
 		SELECT id, data, version, created_at, updated_at 
 		FROM %s 
@@ -207,7 +209,10 @@ func (d *Driver) ApplyRecord(ctx context.Context, record *datasync.DataRecord) e
 		return fmt.Errorf("driver is closed")
 	}
 
-	tableName := d.sanitizeTableName(record.Type)
+	if err := d.validateTableName(record.Type); err != nil {
+		return fmt.Errorf("invalid record type: %w", err)
+	}
+	tableName := record.Type
 
 	// 确保表存在
 	if err := d.createDataTableIfNotExists(ctx, tableName); err != nil {
@@ -225,7 +230,6 @@ func (d *Driver) ApplyRecord(ctx context.Context, record *datasync.DataRecord) e
 
 	// 检查记录是否存在
 	var exists bool
-	//nolint:gosec // tableName is sanitized by sanitizeTableName
 	checkQuery := fmt.Sprintf("SELECT EXISTS(SELECT 1 FROM %s WHERE id = $1)", tableName)
 	if err := tx.QueryRowContext(ctx, checkQuery, string(record.ID)).Scan(&exists); err != nil {
 		return fmt.Errorf("failed to check record existence: %w", err)
@@ -243,7 +247,6 @@ func (d *Driver) ApplyRecord(ctx context.Context, record *datasync.DataRecord) e
 	if exists {
 		changeType = "UPDATE"
 		// 更新记录
-		//nolint:gosec // tableName is sanitized by sanitizeTableName
 		updateQuery := fmt.Sprintf(`
 			UPDATE %s 
 			SET data = $1, version = $2, updated_at = $3 
@@ -254,7 +257,6 @@ func (d *Driver) ApplyRecord(ctx context.Context, record *datasync.DataRecord) e
 		}
 	} else {
 		// 插入记录
-		//nolint:gosec // tableName is sanitized by sanitizeTableName
 		insertQuery := fmt.Sprintf(`
 			INSERT INTO %s (id, data, version, created_at, updated_at) 
 			VALUES ($1, $2, $3, $4, $5)
@@ -340,8 +342,10 @@ func (d *Driver) GetLatestVersion(ctx context.Context, dataType string, id datas
 		return 0, fmt.Errorf("driver is closed")
 	}
 
-	tableName := d.sanitizeTableName(dataType)
-	//nolint:gosec // tableName is sanitized by sanitizeTableName
+	if err := d.validateTableName(dataType); err != nil {
+		return 0, fmt.Errorf("invalid data type: %w", err)
+	}
+	tableName := dataType
 	query := fmt.Sprintf("SELECT COALESCE(MAX(version), 0) FROM %s WHERE id = $1", tableName)
 
 	var version int64
@@ -367,11 +371,22 @@ func (d *Driver) Unmarshal(data []byte) (*datasync.DataRecord, error) {
 	return &record, nil
 }
 
-// sanitizeTableName 清理表名，防止 SQL 注入
-func (d *Driver) sanitizeTableName(name string) string {
-	// 只允许字母、数字和下划线
-	re := regexp.MustCompile(`[^a-zA-Z0-9_]`)
-	return re.ReplaceAllString(name, "_")
+// validateTableName 验证表名是否合法，防止 SQL 注入
+// 只允许字母、数字和下划线，且必须以字母开头
+func (d *Driver) validateTableName(name string) error {
+	if name == "" {
+		return fmt.Errorf("table name cannot be empty")
+	}
+	// 检查是否只包含合法字符
+	for i, r := range name {
+		if i == 0 && !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')) {
+			return fmt.Errorf("table name must start with a letter")
+		}
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_') {
+			return fmt.Errorf("table name contains invalid character: %c", r)
+		}
+	}
+	return nil
 }
 
 // createDataTableIfNotExists 创建数据表（如果不存在）

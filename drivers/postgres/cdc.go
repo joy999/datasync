@@ -270,7 +270,10 @@ func (d *Driver) DeleteRecord(ctx context.Context, dataType string, id datasync.
 		return fmt.Errorf("driver is closed")
 	}
 
-	tableName := d.sanitizeTableName(dataType)
+	if err := d.validateTableName(dataType); err != nil {
+		return fmt.Errorf("invalid data type: %w", err)
+	}
+	tableName := dataType
 
 	// 开始事务
 	tx, err := d.db.BeginTx(ctx, nil)
@@ -283,7 +286,6 @@ func (d *Driver) DeleteRecord(ctx context.Context, dataType string, id datasync.
 
 	// 获取旧数据用于 CDC
 	var oldDataJSON []byte
-	//nolint:gosec // tableName is sanitized by sanitizeTableName
 	selectQuery := fmt.Sprintf("SELECT data FROM %s WHERE id = $1", tableName)
 	err = tx.QueryRowContext(ctx, selectQuery, string(id)).Scan(&oldDataJSON)
 	if err != nil && err != sql.ErrNoRows {
@@ -291,7 +293,6 @@ func (d *Driver) DeleteRecord(ctx context.Context, dataType string, id datasync.
 	}
 
 	// 删除记录
-	//nolint:gosec // tableName is sanitized by sanitizeTableName
 	deleteQuery := fmt.Sprintf("DELETE FROM %s WHERE id = $1", tableName)
 	if _, err := tx.ExecContext(ctx, deleteQuery, string(id)); err != nil {
 		return fmt.Errorf("failed to delete record: %w", err)
