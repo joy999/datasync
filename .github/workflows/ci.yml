@@ -16,6 +16,19 @@ jobs:
         image: nats:latest
         ports:
           - 4222:4222
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: datasync_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     strategy:
       matrix:
@@ -45,17 +58,31 @@ jobs:
       run: go test -v -run "^Test[^Benchmark|^TestExample]" ./...
       env:
         NATS_URL: nats://localhost:4222
-        SKIP_PG_TEST: "true"
+        TEST_PG_HOST: localhost
+        TEST_PG_PORT: "5432"
+        TEST_PG_DB: datasync_test
+        TEST_PG_USER: postgres
+        TEST_PG_PASSWORD: postgres
 
     - name: Run example tests
       run: go test -v -run "^TestExample" ./...
       env:
         NATS_URL: nats://localhost:4222
+        TEST_PG_HOST: localhost
+        TEST_PG_PORT: "5432"
+        TEST_PG_DB: datasync_test
+        TEST_PG_USER: postgres
+        TEST_PG_PASSWORD: postgres
 
     - name: Run integration tests
       run: go test -v -tags=integration ./...
       env:
         NATS_URL: nats://localhost:4222
+        TEST_PG_HOST: localhost
+        TEST_PG_PORT: "5432"
+        TEST_PG_DB: datasync_test
+        TEST_PG_USER: postgres
+        TEST_PG_PASSWORD: postgres
 
   benchmark:
     name: Benchmark
