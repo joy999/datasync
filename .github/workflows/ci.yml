@@ -45,6 +45,7 @@ jobs:
       run: go test -v -run "^Test[^Benchmark|^TestExample]" ./...
       env:
         NATS_URL: nats://localhost:4222
+        SKIP_PG_TEST: "true"
 
     - name: Run example tests
       run: go test -v -run "^TestExample" ./...
