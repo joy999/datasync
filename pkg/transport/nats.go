@@ -124,7 +124,7 @@ func (n *NATS) Stop() error {
 
 	// 取消所有订阅
 	for _, sub := range n.subs {
-		sub.Unsubscribe()
+		_ = sub.Unsubscribe()
 	}
 
 	// 关闭连接
@@ -159,7 +159,7 @@ func (n *NATS) Subscribe(ctx context.Context, groupID datasync.GroupID, callback
 
 	// 取消旧的订阅
 	if sub, ok := n.subs[subject]; ok {
-		sub.Unsubscribe()
+		_ = sub.Unsubscribe()
 	}
 
 	// 创建新的订阅

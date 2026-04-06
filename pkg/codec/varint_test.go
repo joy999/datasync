@@ -10,10 +10,10 @@ func TestVarint_EncodeDecode(t *testing.T) {
 	v := NewVarint()
 
 	tests := []struct {
-		name     string
-		id       datasync.DriverID
-		wantLen  int
-		wantErr  bool
+		name    string
+		id      datasync.DriverID
+		wantLen int
+		wantErr bool
 	}{
 		{"zero (reserved)", 0, 1, false},
 		{"single byte min", 1, 1, false},

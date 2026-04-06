@@ -14,11 +14,11 @@ const DriverIDValue datasync.DriverID = 0x01
 
 // Driver 内存存储驱动实现
 type Driver struct {
-	dataType        string
-	records         map[datasync.DataID]*datasync.DataRecord
-	recordsMutex    sync.RWMutex
-	changeCallback  func(*datasync.DataRecord)
-	ctx             context.Context
+	dataType       string
+	records        map[datasync.DataID]*datasync.DataRecord
+	recordsMutex   sync.RWMutex
+	changeCallback func(*datasync.DataRecord)
+	ctx            context.Context
 }
 
 // NewDriver 创建内存存储驱动
@@ -57,9 +57,8 @@ func (d *Driver) GetRecords(ctx context.Context, dataType string, cursor string,
 
 	// 处理分页
 	start := 0
-	if cursor != "" {
-		// 这里可以实现基于cursor的分页逻辑
-	}
+	_ = cursor // cursor 预留用于分页，当前未使用
+	_ = start
 
 	end := start + limit
 	if end > len(records) {

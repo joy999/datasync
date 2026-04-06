@@ -7,37 +7,37 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/joy999/datasync/pkg/codec"
 	datasync "github.com/joy999/datasync/pkg"
+	"github.com/joy999/datasync/pkg/codec"
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 )
 
 // Config Raft配置
 type Config struct {
-	NodeID    datasync.NodeID      // 节点ID
-	GroupID   datasync.GroupID     // 组ID
-	DataDir   string               // 数据目录
-	Transport datasync.Transport   // 传输层
-	HeartbeatTick    int           // 心跳间隔（tick）
-	ElectionTick     int           // 选举间隔（tick）
-	SnapshotInterval time.Duration // 快照间隔
-	MaxSnapshotFiles int           // 最大快照文件数
+	NodeID           datasync.NodeID    // 节点ID
+	GroupID          datasync.GroupID   // 组ID
+	DataDir          string             // 数据目录
+	Transport        datasync.Transport // 传输层
+	HeartbeatTick    int                // 心跳间隔（tick）
+	ElectionTick     int                // 选举间隔（tick）
+	SnapshotInterval time.Duration      // 快照间隔
+	MaxSnapshotFiles int                // 最大快照文件数
 }
 
 // Node Raft节点实现
 type Node struct {
-	config        *Config
-	raftNode      raft.Node
-	raftStorage   *raft.MemoryStorage
-	peerIDs       []uint64
-	dataDir       string
-	transport     datasync.Transport
-	isLeader      bool
-	raftConfig    *raft.Config
-	driverID      datasync.DriverID  // 当前使用的驱动ID
-	ctx           context.Context
-	cancel        context.CancelFunc
+	config      *Config
+	raftNode    raft.Node
+	raftStorage *raft.MemoryStorage
+	peerIDs     []uint64
+	dataDir     string
+	transport   datasync.Transport
+	isLeader    bool
+	raftConfig  *raft.Config
+	driverID    datasync.DriverID // 当前使用的驱动ID
+	ctx         context.Context
+	cancel      context.CancelFunc
 }
 
 // NewNode 创建新的Raft节点
@@ -47,7 +47,7 @@ func NewNode(config *Config) (*Node, error) {
 
 	// 确保数据目录存在
 	dataDir := filepath.Join(config.DataDir, string(config.GroupID))
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
+	if err := os.MkdirAll(dataDir, 0750); err != nil {
 		cancel()
 		return nil, fmt.Errorf("failed to create data directory: %w", err)
 	}
@@ -148,12 +148,12 @@ func (n *Node) processMessages() {
 
 			// 处理日志
 			if len(msg.Entries) > 0 {
-				n.raftStorage.Append(msg.Entries)
+				_ = n.raftStorage.Append(msg.Entries)
 			}
 
 			// 处理快照
 			if msg.Snapshot.Metadata.Term != 0 || msg.Snapshot.Metadata.Index != 0 {
-				n.raftStorage.ApplySnapshot(msg.Snapshot)
+				_ = n.raftStorage.ApplySnapshot(msg.Snapshot)
 			}
 
 			// 处理消息发送
@@ -197,5 +197,3 @@ func (n *Node) applyEntry(entry raftpb.Entry) {
 	// 例如，将数据存储到存储驱动
 	_ = record
 }
-
-

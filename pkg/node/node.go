@@ -5,33 +5,33 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/joy999/datasync/pkg/codec"
 	datasync "github.com/joy999/datasync/pkg"
+	"github.com/joy999/datasync/pkg/codec"
 	"github.com/joy999/datasync/pkg/group"
 	"github.com/joy999/datasync/pkg/raft"
 )
 
 // Config 节点配置
 type Config struct {
-	NodeID    datasync.NodeID // 节点ID
-	GroupID   datasync.GroupID // 组ID
-	Address   string           // 节点地址
-	DataDir   string           // 数据目录
-	RaftConfig *raft.Config    // Raft配置
-	Transport  datasync.Transport // 传输层
+	NodeID      datasync.NodeID      // 节点ID
+	GroupID     datasync.GroupID     // 组ID
+	Address     string               // 节点地址
+	DataDir     string               // 数据目录
+	RaftConfig  *raft.Config         // Raft配置
+	Transport   datasync.Transport   // 传输层
 	AuthManager datasync.AuthManager // 认证管理器
 }
 
 // Node 节点实现
 type Node struct {
-	config        *Config
-	raftNode      *raft.Node
-	groupManager  *group.Manager
-	drivers       map[string]datasync.StorageDriver
-	driversMutex  sync.RWMutex
-	ctx           context.Context
-	cancel        context.CancelFunc
-	running       bool
+	config       *Config
+	raftNode     *raft.Node
+	groupManager *group.Manager
+	drivers      map[string]datasync.StorageDriver
+	driversMutex sync.RWMutex
+	ctx          context.Context
+	cancel       context.CancelFunc
+	running      bool
 }
 
 // New 创建新节点
@@ -41,9 +41,9 @@ func New(config *Config) (*Node, error) {
 
 	// 创建Raft节点
 	raftNode, err := raft.NewNode(&raft.Config{
-		NodeID:   config.NodeID,
-		GroupID:  config.GroupID,
-		DataDir:  config.DataDir,
+		NodeID:    config.NodeID,
+		GroupID:   config.GroupID,
+		DataDir:   config.DataDir,
 		Transport: config.Transport,
 	})
 	if err != nil {
@@ -55,7 +55,7 @@ func New(config *Config) (*Node, error) {
 	groupManager, err := group.NewManager(ctx, config.GroupID)
 	if err != nil {
 		cancel()
-		raftNode.Stop()
+		_ = raftNode.Stop()
 		return nil, fmt.Errorf("failed to create group manager: %w", err)
 	}
 
@@ -86,15 +86,15 @@ func (n *Node) Start(ctx context.Context) error {
 
 	// 启动组管理器
 	if err := n.groupManager.Start(ctx); err != nil {
-		n.raftNode.Stop()
+		_ = n.raftNode.Stop()
 		return fmt.Errorf("failed to start group manager: %w", err)
 	}
 
 	// 启动传输层
 	if n.config.Transport != nil {
 		if err := n.config.Transport.Start(ctx); err != nil {
-			n.raftNode.Stop()
-			n.groupManager.Stop()
+			_ = n.raftNode.Stop()
+			_ = n.groupManager.Stop()
 			return fmt.Errorf("failed to start transport: %w", err)
 		}
 	}
@@ -102,10 +102,10 @@ func (n *Node) Start(ctx context.Context) error {
 	// 启动认证管理器
 	if n.config.AuthManager != nil {
 		if err := n.config.AuthManager.Start(ctx); err != nil {
-			n.raftNode.Stop()
-			n.groupManager.Stop()
+			_ = n.raftNode.Stop()
+			_ = n.groupManager.Stop()
 			if n.config.Transport != nil {
-				n.config.Transport.Stop()
+				_ = n.config.Transport.Stop()
 			}
 			return fmt.Errorf("failed to start auth manager: %w", err)
 		}
@@ -123,19 +123,19 @@ func (n *Node) Stop() error {
 
 	// 停止认证管理器
 	if n.config.AuthManager != nil {
-		n.config.AuthManager.Stop()
+		_ = n.config.AuthManager.Stop()
 	}
 
 	// 停止传输层
 	if n.config.Transport != nil {
-		n.config.Transport.Stop()
+		_ = n.config.Transport.Stop()
 	}
 
 	// 停止组管理器
-	n.groupManager.Stop()
+	_ = n.groupManager.Stop()
 
 	// 停止Raft节点
-	n.raftNode.Stop()
+	_ = n.raftNode.Stop()
 
 	// 取消上下文
 	n.cancel()
@@ -202,7 +202,7 @@ func (n *Node) GetDriver(dataType string) (datasync.StorageDriver, error) {
 // OnDataChange 处理数据变更
 func (n *Node) OnDataChange(record *datasync.DataRecord) {
 	// 应用到Raft日志
-	n.raftNode.Apply(record)
+	_ = n.raftNode.Apply(record)
 }
 
 // TriggerFullSync 触发全量同步

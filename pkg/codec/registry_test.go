@@ -11,7 +11,6 @@ import (
 // MockDriver 用于测试的模拟驱动
 type MockDriver struct {
 	id      datasync.DriverID
-	data    map[datasync.DataID]*datasync.DataRecord
 	marshal func(*datasync.DataRecord) ([]byte, error)
 }
 

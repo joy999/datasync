@@ -11,18 +11,18 @@ import (
 // Config 认证配置
 type Config struct {
 	DefaultMethod  datasync.AuthMethod // 默认认证方法
-	TokenSecret    string             // Token密钥
-	TokenTTL       time.Duration      // Token过期时间
-	CACertFile     string             // CA证书文件
-	CAKeyFile      string             // CA密钥文件
-	AutoGenerateCA bool               // 是否自动生成CA
+	TokenSecret    string              // Token密钥
+	TokenTTL       time.Duration       // Token过期时间
+	CACertFile     string              // CA证书文件
+	CAKeyFile      string              // CA密钥文件
+	AutoGenerateCA bool                // 是否自动生成CA
 }
 
 // Manager 认证管理器实现
 type Manager struct {
-	config      *Config
-	ctx         context.Context
-	cancel      context.CancelFunc
+	config *Config
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 // NewManager 创建认证管理器

@@ -108,15 +108,15 @@ type GroupManager interface {
 
 // NodeGroup 节点组配置
 type NodeGroup struct {
-	ID             GroupID     // 组ID
-	Nodes          []NodeID    // 组内节点
-	OutboundSyncs  []GroupID   // 出站同步目标组
-	InboundSyncs   []GroupID   // 入站同步来源组
-	Leader         NodeID      // 当前Leader节点
-	LastSyncTime   time.Time   // 上次同步时间
-	SyncInterval   time.Duration // 同步间隔
-	AuthRequired   bool        // 是否需要认证
-	AuthMethod     AuthMethod  // 认证方法
+	ID            GroupID       // 组ID
+	Nodes         []NodeID      // 组内节点
+	OutboundSyncs []GroupID     // 出站同步目标组
+	InboundSyncs  []GroupID     // 入站同步来源组
+	Leader        NodeID        // 当前Leader节点
+	LastSyncTime  time.Time     // 上次同步时间
+	SyncInterval  time.Duration // 同步间隔
+	AuthRequired  bool          // 是否需要认证
+	AuthMethod    AuthMethod    // 认证方法
 }
 
 // SyncManager 同步管理器接口
@@ -133,13 +133,13 @@ type SyncManager interface {
 
 // SyncStatus 同步状态
 type SyncStatus struct {
-	SourceGroup    GroupID    // 源组
-	TargetGroup    GroupID    // 目标组
-	LastSyncTime   time.Time  // 上次同步时间
-	NextSyncTime   time.Time  // 下次同步时间
-	SyncMode       string     // 同步模式（全量/增量）
-	LastSyncError  string     // 上次同步错误
-	PendingRecords int        // 待同步记录数
+	SourceGroup    GroupID   // 源组
+	TargetGroup    GroupID   // 目标组
+	LastSyncTime   time.Time // 上次同步时间
+	NextSyncTime   time.Time // 下次同步时间
+	SyncMode       string    // 同步模式（全量/增量）
+	LastSyncError  string    // 上次同步错误
+	PendingRecords int       // 待同步记录数
 }
 
 // Transport 传输层接口

@@ -11,11 +11,11 @@ import (
 
 // Manager 组管理器实现
 type Manager struct {
-	groupID    datasync.GroupID
-	groups     map[datasync.GroupID]*datasync.NodeGroup
+	groupID     datasync.GroupID
+	groups      map[datasync.GroupID]*datasync.NodeGroup
 	groupsMutex sync.RWMutex
-	ctx        context.Context
-	cancel     context.CancelFunc
+	ctx         context.Context
+	cancel      context.CancelFunc
 }
 
 // NewManager 创建组管理器
@@ -25,23 +25,23 @@ func NewManager(ctx context.Context, groupID datasync.GroupID) (*Manager, error)
 
 	// 初始化组管理器
 	m := &Manager{
-		groupID:    groupID,
-		groups:     make(map[datasync.GroupID]*datasync.NodeGroup),
-		ctx:        ctx,
-		cancel:     cancel,
+		groupID: groupID,
+		groups:  make(map[datasync.GroupID]*datasync.NodeGroup),
+		ctx:     ctx,
+		cancel:  cancel,
 	}
 
 	// 初始化默认组
 	m.groups[groupID] = &datasync.NodeGroup{
-		ID:             groupID,
-		Nodes:          []datasync.NodeID{},
-		OutboundSyncs:  []datasync.GroupID{},
-		InboundSyncs:   []datasync.GroupID{},
-		Leader:         "",
-		LastSyncTime:   time.Now(),
-		SyncInterval:   5 * time.Minute,
-		AuthRequired:   false,
-		AuthMethod:     datasync.AuthMethodToken,
+		ID:            groupID,
+		Nodes:         []datasync.NodeID{},
+		OutboundSyncs: []datasync.GroupID{},
+		InboundSyncs:  []datasync.GroupID{},
+		Leader:        "",
+		LastSyncTime:  time.Now(),
+		SyncInterval:  5 * time.Minute,
+		AuthRequired:  false,
+		AuthMethod:    datasync.AuthMethodToken,
 	}
 
 	return m, nil

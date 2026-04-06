@@ -131,12 +131,18 @@ func EncodeToUint64(id datasync.DriverID) uint64 {
 
 // DecodeFromUint64 辅助函数：从 uint64 解码 DriverID
 func DecodeFromUint64(val uint64) datasync.DriverID {
+	if val > 0xFFFFFFFF {
+		val = 0xFFFFFFFF
+	}
 	return datasync.DriverID(val)
 }
 
 // BinaryEncode 使用固定4字节大端序编码（适用于网络传输场景）
 func BinaryEncode(id datasync.DriverID) []byte {
 	buf := make([]byte, 4)
+	if id > 0xFFFFFFFF {
+		id = 0xFFFFFFFF
+	}
 	binary.BigEndian.PutUint32(buf, uint32(id))
 	return buf
 }
