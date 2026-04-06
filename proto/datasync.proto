@@ -6,37 +6,51 @@ option go_package = "github.com/joy999/datasync/proto";
 
 import "google/protobuf/timestamp.proto";
 
-// NodeInfo 节点信息
-message NodeInfo {
-  string id = 1;
-  string address = 2;
-  string group_id = 3;
-  map<string, string> metadata = 4;
-  google.protobuf.Timestamp created_at = 5;
-  google.protobuf.Timestamp updated_at = 6;
+// Envelope 传输协议信封
+// 所有消息都应该包装在 Envelope 中传输
+message Envelope {
+  // 信封版本，用于协议升级
+  uint32 version = 1;
+  
+  // 发送者信息
+  string source_node = 2;
+  string source_group = 3;
+  
+  // 目标信息
+  string target_group = 4;
+  
+  // 认证令牌（由框架层统一处理）
+  string auth_token = 5;
+  
+  // 消息时间戳
+  google.protobuf.Timestamp timestamp = 6;
+  
+  // 消息ID，用于追踪和去重
+  string message_id = 7;
+  
+  // 实际的负载消息
+  oneof payload {
+    SyncMessage sync_message = 10;
+    SyncRequest sync_request = 11;
+    SyncResponse sync_response = 12;
+    RaftMessage raft_message = 13;
+    DiscoveryMessage discovery_message = 14;
+    AuthMessage auth_message = 15;
+    ConfigChange config_change = 16;
+    SnapshotData snapshot_data = 17;
+    // 心跳消息
+    Heartbeat heartbeat = 18;
+  }
 }
 
-// NodeGroupInfo 节点组信息
-message NodeGroupInfo {
-  string id = 1;
-  string name = 2;
-  string description = 3;
-  repeated string node_ids = 4;
-  repeated string outbound_syncs = 5;
-  repeated string inbound_syncs = 6;
-  map<string, string> metadata = 7;
-  google.protobuf.Timestamp created_at = 8;
-  google.protobuf.Timestamp updated_at = 9;
-}
-
-// DataRecord 数据记录
-message DataRecord {
-  string id = 1;
-  string type = 2;
-  int64 version = 3;
-  google.protobuf.Timestamp timestamp = 4;
-  bytes payload = 5;
-  map<string, string> metadata = 6;
+// Heartbeat 心跳消息
+message Heartbeat {
+  string node_id = 1;
+  string group_id = 2;
+  // 节点状态
+  bool is_leader = 3;
+  // 统计信息
+  uint64 processed_messages = 4;
 }
 
 // SyncMessage 同步消息
@@ -49,34 +63,28 @@ message SyncMessage {
     HEARTBEAT = 4;
   }
   
+  // 注意：source_node/source_group 已移到 Envelope
   string message_id = 1;
   SyncType type = 2;
-  string source_node = 3;
-  string source_group = 4;
-  string target_group = 5;
-  repeated DataRecord records = 6;
+  repeated DataRecord records = 3;
   
   // 用于全量同步的分页
-  string cursor = 7;
-  bool has_more = 8;
-  
-  google.protobuf.Timestamp timestamp = 9;
+  string cursor = 4;
+  bool has_more = 5;
 }
 
 // SyncRequest 同步请求
 message SyncRequest {
   string request_id = 1;
-  string source_group = 2;
-  string target_group = 3;
-  SyncMessage.SyncType sync_type = 4;
-  repeated string data_types = 5;
+  SyncMessage.SyncType sync_type = 2;
+  repeated string data_types = 3;
   
   // 增量同步的时间戳
-  google.protobuf.Timestamp since = 6;
+  google.protobuf.Timestamp since = 4;
   
   // 分页游标
-  string cursor = 7;
-  int32 limit = 8;
+  string cursor = 5;
+  int32 limit = 6;
 }
 
 // SyncResponse 同步响应
@@ -87,7 +95,16 @@ message SyncResponse {
   repeated DataRecord records = 4;
   string cursor = 5;
   bool has_more = 6;
-  google.protobuf.Timestamp timestamp = 7;
+}
+
+// DataRecord 数据记录
+message DataRecord {
+  string id = 1;
+  string type = 2;
+  int64 version = 3;
+  google.protobuf.Timestamp timestamp = 4;
+  bytes payload = 5;
+  map<string, string> metadata = 6;
 }
 
 // RaftMessage Raft 消息封装
@@ -119,7 +136,29 @@ message DiscoveryMessage {
   MessageType type = 1;
   NodeInfo node = 2;
   repeated NodeInfo nodes = 3;
-  google.protobuf.Timestamp timestamp = 4;
+}
+
+// NodeInfo 节点信息
+message NodeInfo {
+  string id = 1;
+  string address = 2;
+  string group_id = 3;
+  map<string, string> metadata = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}
+
+// NodeGroupInfo 节点组信息
+message NodeGroupInfo {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  repeated string node_ids = 4;
+  repeated string outbound_syncs = 5;
+  repeated string inbound_syncs = 6;
+  map<string, string> metadata = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
 }
 
 // AuthMessage 认证消息

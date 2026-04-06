@@ -2,11 +2,15 @@ package memory
 
 import (
 	"context"
+	"encoding/json"
 	"sync"
 	"time"
 
 	datasync "github.com/joy999/datasync/pkg"
 )
+
+// DriverIDValue 内存驱动唯一标识
+const DriverIDValue datasync.DriverID = 0x01
 
 // Driver 内存存储驱动实现
 type Driver struct {
@@ -164,4 +168,24 @@ func (d *Driver) SaveRecord(record *datasync.DataRecord) error {
 	}
 
 	return d.ApplyRecord(d.ctx, record)
+}
+
+// GetDriverID 获取驱动唯一标识
+func (d *Driver) GetDriverID() datasync.DriverID {
+	return DriverIDValue
+}
+
+// Marshal 将 DataRecord 序列化为字节（使用 JSON）
+func (d *Driver) Marshal(record *datasync.DataRecord) ([]byte, error) {
+	// 使用 JSON 序列化
+	return json.Marshal(record)
+}
+
+// Unmarshal 将字节反序列化为 DataRecord（使用 JSON）
+func (d *Driver) Unmarshal(data []byte) (*datasync.DataRecord, error) {
+	var record datasync.DataRecord
+	if err := json.Unmarshal(data, &record); err != nil {
+		return nil, err
+	}
+	return &record, nil
 }

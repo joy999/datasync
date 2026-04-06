@@ -56,6 +56,9 @@ type Node interface {
 	GetGroupManager() GroupManager
 }
 
+// DriverID 驱动标识类型（支持变长编码）
+type DriverID uint32
+
 // StorageDriver 存储驱动接口
 type StorageDriver interface {
 	// Initialize 初始化驱动
@@ -76,6 +79,17 @@ type StorageDriver interface {
 	GetLatestVersion(ctx context.Context, dataType string, id DataID) (int64, error)
 	// SetChangeCallback 设置变更回调
 	SetChangeCallback(callback func(*DataRecord))
+	// GetDriverID 获取驱动唯一标识
+	// ID 使用变长编码：
+	//   - 0-127: 1字节
+	//   - 128-16383: 2字节
+	//   - 16384-2097151: 3字节
+	//   - 更大值: 最多5字节（支持到 34,359,738,367）
+	GetDriverID() DriverID
+	// Marshal 将 DataRecord 序列化为字节
+	Marshal(record *DataRecord) ([]byte, error)
+	// Unmarshal 将字节反序列化为 DataRecord
+	Unmarshal(data []byte) (*DataRecord, error)
 }
 
 // GroupManager 节点组管理器接口

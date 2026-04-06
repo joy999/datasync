@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/joy999/datasync/pkg/codec"
 	datasync "github.com/joy999/datasync/pkg"
 	"github.com/joy999/datasync/pkg/group"
 	"github.com/joy999/datasync/pkg/raft"
@@ -172,6 +173,14 @@ func (n *Node) RegisterDriver(dataType string, driver datasync.StorageDriver) er
 	driver.SetChangeCallback(func(record *datasync.DataRecord) {
 		n.OnDataChange(record)
 	})
+
+	// 注册驱动到 codec registry
+	if err := codec.Register(driver); err != nil {
+		return fmt.Errorf("failed to register driver to codec: %w", err)
+	}
+
+	// 设置 Raft 节点的 driverID（使用第一个注册的驱动的ID）
+	n.raftNode.SetDriverID(driver.GetDriverID())
 
 	n.drivers[dataType] = driver
 	return nil

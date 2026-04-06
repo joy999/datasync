@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/joy999/datasync/pkg/codec"
 	datasync "github.com/joy999/datasync/pkg"
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
@@ -34,6 +35,7 @@ type Node struct {
 	transport     datasync.Transport
 	isLeader      bool
 	raftConfig    *raft.Config
+	driverID      datasync.DriverID  // 当前使用的驱动ID
 	ctx           context.Context
 	cancel        context.CancelFunc
 }
@@ -77,6 +79,7 @@ func NewNode(config *Config) (*Node, error) {
 		transport:   config.Transport,
 		isLeader:    false,
 		raftConfig:  raftConfig,
+		driverID:    0, // 初始为0，需要外部设置
 		ctx:         ctx,
 		cancel:      cancel,
 	}
@@ -111,16 +114,23 @@ func (n *Node) IsLeader() bool {
 
 // Apply 应用数据到Raft日志
 func (n *Node) Apply(record *datasync.DataRecord) error {
-	// 构建日志条目
-	data, err := encodeRecord(record)
+	if n.driverID == 0 {
+		return fmt.Errorf("driver ID not set")
+	}
+
+	// 使用 codec 编码数据: [Varint DriverID][Payload]
+	data, err := codec.Encode(record, n.driverID)
 	if err != nil {
 		return fmt.Errorf("failed to encode record: %w", err)
 	}
 
 	// 应用到Raft
-	n.raftNode.Propose(n.ctx, data)
+	return n.raftNode.Propose(n.ctx, data)
+}
 
-	return nil
+// SetDriverID 设置驱动ID
+func (n *Node) SetDriverID(driverID datasync.DriverID) {
+	n.driverID = driverID
 }
 
 // processMessages 处理Raft消息
@@ -175,26 +185,17 @@ func (n *Node) sendMessages(msgs []raftpb.Message) {
 
 // applyEntry 应用日志条目到状态机
 func (n *Node) applyEntry(entry raftpb.Entry) {
-	// 解码记录
-	_, err := decodeRecord(entry.Data)
+	// 使用 codec 解码数据
+	record, err := codec.Decode(entry.Data)
 	if err != nil {
+		// 解码失败，记录日志但继续处理其他条目
+		// 实际生产环境应该有更完善的错误处理
 		return
 	}
 
 	// 这里可以实现状态机应用逻辑
 	// 例如，将数据存储到存储驱动
+	_ = record
 }
 
-// encodeRecord 编码数据记录
-func encodeRecord(record *datasync.DataRecord) ([]byte, error) {
-	// 这里可以实现编码逻辑
-	// 例如，使用JSON或Protocol Buffers
-	return []byte(""), nil
-}
 
-// decodeRecord 解码数据记录
-func decodeRecord(data []byte) (*datasync.DataRecord, error) {
-	// 这里可以实现解码逻辑
-	// 例如，使用JSON或Protocol Buffers
-	return &datasync.DataRecord{}, nil
-}
