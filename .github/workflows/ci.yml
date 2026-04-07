@@ -54,8 +54,23 @@ jobs:
     - name: Download dependencies
       run: go mod download
 
+    - name: Wait for services
+      run: |
+        # Wait for PostgreSQL
+        for i in {1..30}; do
+          pg_isready -h localhost -p 5432 -U postgres && break
+          echo "Waiting for PostgreSQL..."
+          sleep 1
+        done
+        # Wait for NATS
+        for i in {1..30}; do
+          nc -z localhost 4222 && break
+          echo "Waiting for NATS..."
+          sleep 1
+        done
+
     - name: Run unit tests
-      run: go test -v -run "^Test[^Benchmark|^TestExample]" ./...
+      run: go test -v -run '^Test([^B]|B[^e]|Be[^n]|Ben[^c]|Benc[^h]|Bench[^m]|Benchm[^a]|Benchma[^r]|Benchmar[^k])' ./...
       env:
         NATS_URL: nats://localhost:4222
         TEST_PG_HOST: localhost
