@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	datasync "github.com/joy999/datasync/pkg"
@@ -38,6 +39,11 @@ type Node struct {
 	driverID    datasync.DriverID // 当前使用的驱动ID
 	ctx         context.Context
 	cancel      context.CancelFunc
+
+	// 状态机应用相关
+	applyCh      chan *datasync.DataRecord // 应用通道
+	appliedIndex uint64                    // 已应用的索引
+	mu           sync.RWMutex
 }
 
 // NewNode 创建新的Raft节点
@@ -58,11 +64,19 @@ func NewNode(config *Config) (*Node, error) {
 	// 配置Raft
 	raftConfig := &raft.Config{
 		ID:              uint64(config.NodeID[0]), // 简单处理，实际应该有更复杂的ID映射
-		ElectionTick:    config.ElectionTick,
-		HeartbeatTick:   config.HeartbeatTick,
+		ElectionTick:    10,
+		HeartbeatTick:   1,
 		Storage:         storage,
 		MaxSizePerMsg:   1024 * 1024, // 1MB
 		MaxInflightMsgs: 256,
+	}
+
+	// 使用传入的配置覆盖默认值
+	if config.ElectionTick > 0 {
+		raftConfig.ElectionTick = config.ElectionTick
+	}
+	if config.HeartbeatTick > 0 {
+		raftConfig.HeartbeatTick = config.HeartbeatTick
 	}
 
 	// 创建Raft节点
@@ -71,17 +85,19 @@ func NewNode(config *Config) (*Node, error) {
 
 	// 初始化Raft节点
 	rn := &Node{
-		config:      config,
-		raftNode:    node,
-		raftStorage: storage,
-		peerIDs:     []uint64{uint64(config.NodeID[0])},
-		dataDir:     dataDir,
-		transport:   config.Transport,
-		isLeader:    false,
-		raftConfig:  raftConfig,
-		driverID:    0, // 初始为0，需要外部设置
-		ctx:         ctx,
-		cancel:      cancel,
+		config:       config,
+		raftNode:     node,
+		raftStorage:  storage,
+		peerIDs:      []uint64{uint64(config.NodeID[0])},
+		dataDir:      dataDir,
+		transport:    config.Transport,
+		isLeader:     false,
+		raftConfig:   raftConfig,
+		driverID:     0, // 初始为0，需要外部设置
+		ctx:          ctx,
+		cancel:       cancel,
+		applyCh:      make(chan *datasync.DataRecord, 1000),
+		appliedIndex: 0,
 	}
 
 	// 启动消息处理协程
@@ -104,12 +120,29 @@ func (n *Node) Stop() error {
 	// 停止Raft节点
 	n.raftNode.Stop()
 
+	// 关闭应用通道
+	close(n.applyCh)
+
 	return nil
 }
 
 // IsLeader 检查是否为Leader
 func (n *Node) IsLeader() bool {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
 	return n.isLeader
+}
+
+// GetAppliedIndex 获取已应用的日志索引
+func (n *Node) GetAppliedIndex() uint64 {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	return n.appliedIndex
+}
+
+// GetApplyChannel 获取应用通道（用于接收已提交的数据记录）
+func (n *Node) GetApplyChannel() <-chan *datasync.DataRecord {
+	return n.applyCh
 }
 
 // Apply 应用数据到Raft日志
@@ -133,6 +166,73 @@ func (n *Node) SetDriverID(driverID datasync.DriverID) {
 	n.driverID = driverID
 }
 
+// AddPeer 添加对等节点
+func (n *Node) AddPeer(ctx context.Context, nodeID datasync.NodeID) error {
+	peerID := uint64(nodeID[0])
+
+	// 检查是否已存在
+	for _, id := range n.peerIDs {
+		if id == peerID {
+			return nil // 已存在，忽略
+		}
+	}
+
+	// 添加对等节点到Raft
+	if n.isLeader {
+		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		if err := n.raftNode.ProposeConfChange(ctx, raftpb.ConfChange{
+			Type:   raftpb.ConfChangeAddNode,
+			NodeID: peerID,
+		}); err != nil {
+			return fmt.Errorf("failed to add peer: %w", err)
+		}
+	}
+
+	n.peerIDs = append(n.peerIDs, peerID)
+	return nil
+}
+
+// RemovePeer 移除对等节点
+func (n *Node) RemovePeer(ctx context.Context, nodeID datasync.NodeID) error {
+	peerID := uint64(nodeID[0])
+
+	// 检查是否存在
+	found := false
+	for _, id := range n.peerIDs {
+		if id == peerID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("peer not found: %s", nodeID)
+	}
+
+	// 从Raft中移除对等节点
+	if n.isLeader {
+		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		if err := n.raftNode.ProposeConfChange(ctx, raftpb.ConfChange{
+			Type:   raftpb.ConfChangeRemoveNode,
+			NodeID: peerID,
+		}); err != nil {
+			return fmt.Errorf("failed to remove peer: %w", err)
+		}
+	}
+
+	// 更新本地对等节点列表
+	newPeers := make([]uint64, 0, len(n.peerIDs)-1)
+	for _, id := range n.peerIDs {
+		if id != peerID {
+			newPeers = append(newPeers, id)
+		}
+	}
+	n.peerIDs = newPeers
+
+	return nil
+}
+
 // processMessages 处理Raft消息
 func (n *Node) processMessages() {
 	for {
@@ -143,7 +243,9 @@ func (n *Node) processMessages() {
 		case msg := <-n.raftNode.Ready():
 			// 处理状态更新
 			if msg.SoftState != nil {
+				n.mu.Lock()
 				n.isLeader = msg.SoftState.Lead == n.raftConfig.ID
+				n.mu.Unlock()
 			}
 
 			// 处理日志
@@ -167,6 +269,9 @@ func (n *Node) processMessages() {
 					// 应用到状态机
 					n.applyEntry(entry)
 				}
+				n.mu.Lock()
+				n.appliedIndex = entry.Index
+				n.mu.Unlock()
 			}
 
 			// 通知Raft节点已处理完毕
@@ -177,10 +282,27 @@ func (n *Node) processMessages() {
 
 // sendMessages 发送Raft消息
 func (n *Node) sendMessages(msgs []raftpb.Message) {
-	for range msgs {
-		// 这里可以实现消息发送逻辑
-		// 例如，通过传输层发送到其他节点
+	if n.transport == nil {
+		return // 没有传输层，无法发送
 	}
+
+	// 注意：这里简化处理，实际应该根据消息类型和目标节点ID
+	// 通过传输层发送到正确的节点
+	// 由于 etcd/raft 的消息处理非常底层，这里仅做示意
+	for range msgs {
+		// TODO: 实现消息发送
+		// 序列化消息并通过传输层发送
+	}
+}
+
+// HandleRaftMessage 处理接收到的Raft消息
+func (n *Node) HandleRaftMessage(msg raftpb.Message) error {
+	// 提交给Raft节点处理
+	if err := n.raftNode.Step(n.ctx, msg); err != nil {
+		return fmt.Errorf("failed to step raft message: %w", err)
+	}
+
+	return nil
 }
 
 // applyEntry 应用日志条目到状态机
@@ -193,7 +315,28 @@ func (n *Node) applyEntry(entry raftpb.Entry) {
 		return
 	}
 
-	// 这里可以实现状态机应用逻辑
-	// 例如，将数据存储到存储驱动
-	_ = record
+	// 将记录发送到应用通道
+	// 使用非阻塞发送，如果通道已满则丢弃
+	select {
+	case n.applyCh <- record:
+		// 成功发送到通道
+	default:
+		// 通道已满，记录日志
+		// 实际生产环境应该处理这种情况
+	}
+}
+
+// CreateSnapshot 创建快照
+func (n *Node) CreateSnapshot() (uint64, raftpb.Snapshot, error) {
+	n.mu.RLock()
+	appliedIndex := n.appliedIndex
+	n.mu.RUnlock()
+
+	// 创建内存快照
+	snapshot, err := n.raftStorage.CreateSnapshot(appliedIndex, nil, nil)
+	if err != nil {
+		return 0, raftpb.Snapshot{}, fmt.Errorf("failed to create snapshot: %w", err)
+	}
+
+	return appliedIndex, snapshot, nil
 }

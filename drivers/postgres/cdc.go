@@ -123,7 +123,7 @@ func (d *Driver) insertCDCRecordTx(ctx context.Context, tx *sql.Tx, record *data
 }
 
 // queryCDCRecords 查询 CDC 记录
-func (d *Driver) queryCDCRecords(ctx context.Context, dataType string, since time.Time, limit int) ([]*datasync.DataRecord, error) {
+func (d *Driver) queryCDCRecords(ctx context.Context, dataType string, since time.Time, limit int) (records []*datasync.DataRecord, err error) {
 	query := fmt.Sprintf(`
 		SELECT id, data_type, record_id, change_type, payload, version, created_at
 		FROM %s
@@ -148,16 +148,17 @@ func (d *Driver) queryCDCRecords(ctx context.Context, dataType string, since tim
 		return nil, fmt.Errorf("failed to query CDC records: %w", err)
 	}
 	defer func() {
-		_ = rows.Close()
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("failed to close rows: %w", closeErr)
+		}
 	}()
 
-	var records []*datasync.DataRecord
 	for rows.Next() {
 		var cdc CDCRecord
 		var payloadJSON []byte
 		var changeTypeStr string
 
-		if err := rows.Scan(
+		if scanErr := rows.Scan(
 			&cdc.ID,
 			&cdc.DataType,
 			&cdc.RecordID,
@@ -165,8 +166,8 @@ func (d *Driver) queryCDCRecords(ctx context.Context, dataType string, since tim
 			&payloadJSON,
 			&cdc.Version,
 			&cdc.CreatedAt,
-		); err != nil {
-			return nil, fmt.Errorf("failed to scan CDC record: %w", err)
+		); scanErr != nil {
+			return nil, fmt.Errorf("failed to scan CDC record: %w", scanErr)
 		}
 
 		cdc.ChangeType = ChangeType(changeTypeStr)
@@ -177,15 +178,14 @@ func (d *Driver) queryCDCRecords(ctx context.Context, dataType string, since tim
 		records = append(records, cdc.ToDataRecord())
 	}
 
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("CDC rows iteration error: %w", err)
+	if rowsErr := rows.Err(); rowsErr != nil {
+		return nil, fmt.Errorf("CDC rows iteration error: %w", rowsErr)
 	}
-
 	return records, nil
 }
 
 // GetCDCRecordsBySequence 按序列号查询 CDC 记录（用于断点续传）
-func (d *Driver) GetCDCRecordsBySequence(ctx context.Context, sequence uint64, limit int) ([]*CDCRecord, error) {
+func (d *Driver) GetCDCRecordsBySequence(ctx context.Context, sequence uint64, limit int) (records []*CDCRecord, err error) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
@@ -206,10 +206,12 @@ func (d *Driver) GetCDCRecordsBySequence(ctx context.Context, sequence uint64, l
 		return nil, fmt.Errorf("failed to query CDC records by sequence: %w", err)
 	}
 	defer func() {
-		_ = rows.Close()
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("failed to close rows: %w", closeErr)
+		}
 	}()
 
-	var records []*CDCRecord
+	records = nil
 	for rows.Next() {
 		var cdc CDCRecord
 		var payloadJSON []byte

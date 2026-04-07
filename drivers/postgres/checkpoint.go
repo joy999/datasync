@@ -101,7 +101,7 @@ func (d *Driver) SetCheckpoint(ctx context.Context, dataType string, sequence ui
 }
 
 // GetAllCheckpoints 获取所有数据类型的同步断点
-func (d *Driver) GetAllCheckpoints(ctx context.Context) (map[string]uint64, error) {
+func (d *Driver) GetAllCheckpoints(ctx context.Context) (checkpoints map[string]uint64, err error) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
@@ -120,23 +120,24 @@ func (d *Driver) GetAllCheckpoints(ctx context.Context) (map[string]uint64, erro
 		return nil, fmt.Errorf("failed to get all checkpoints: %w", err)
 	}
 	defer func() {
-		_ = rows.Close()
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("failed to close rows: %w", closeErr)
+		}
 	}()
 
-	checkpoints := make(map[string]uint64)
+	checkpoints = make(map[string]uint64)
 	for rows.Next() {
 		var dataType string
 		var sequence uint64
-		if err := rows.Scan(&dataType, &sequence); err != nil {
-			return nil, fmt.Errorf("failed to scan checkpoint: %w", err)
+		if scanErr := rows.Scan(&dataType, &sequence); scanErr != nil {
+			return nil, fmt.Errorf("failed to scan checkpoint: %w", scanErr)
 		}
 		checkpoints[dataType] = sequence
 	}
 
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("checkpoint rows iteration error: %w", err)
+	if rowsErr := rows.Err(); rowsErr != nil {
+		return nil, fmt.Errorf("checkpoint rows iteration error: %w", rowsErr)
 	}
-
 	return checkpoints, nil
 }
 

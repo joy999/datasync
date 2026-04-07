@@ -125,8 +125,8 @@ type SyncManager interface {
 	Start(ctx context.Context) error
 	// Stop 停止同步管理器
 	Stop() error
-	// TriggerSync 触发同步
-	TriggerSync(ctx context.Context, sourceGroup, targetGroup GroupID, dataTypes []string) error
+	// TriggerSync 触发同步到目标组
+	TriggerSync(ctx context.Context, targetGroup GroupID, dataTypes []string) error
 	// GetSyncStatus 获取同步状态
 	GetSyncStatus(ctx context.Context, sourceGroup, targetGroup GroupID) (*SyncStatus, error)
 }

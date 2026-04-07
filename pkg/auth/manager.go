@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	datasync "github.com/joy999/datasync/pkg"
 )
 
@@ -20,9 +21,17 @@ type Config struct {
 
 // Manager 认证管理器实现
 type Manager struct {
-	config *Config
-	ctx    context.Context
-	cancel context.CancelFunc
+	config    *Config
+	ctx       context.Context
+	cancel    context.CancelFunc
+	jwtSecret []byte
+}
+
+// JWTClaims JWT 声明结构
+type JWTClaims struct {
+	NodeID  string `json:"node_id"`
+	GroupID string `json:"group_id"`
+	jwt.RegisteredClaims
 }
 
 // NewManager 创建认证管理器
@@ -30,15 +39,19 @@ func NewManager(config *Config) (*Manager, error) {
 	// 初始化上下文
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// 初始化认证管理器
-	m := &Manager{
-		config: config,
-		ctx:    ctx,
-		cancel: cancel,
+	// 检查配置
+	if config.TokenSecret == "" {
+		cancel()
+		return nil, fmt.Errorf("token secret is required")
 	}
 
-	// 这里可以添加初始化逻辑
-	// 例如，加载证书、初始化Token生成器等
+	// 初始化认证管理器
+	m := &Manager{
+		config:    config,
+		ctx:       ctx,
+		cancel:    cancel,
+		jwtSecret: []byte(config.TokenSecret),
+	}
 
 	return m, nil
 }
@@ -73,16 +86,85 @@ func (m *Manager) Authenticate(ctx context.Context, token string) (bool, error) 
 	return true, nil
 }
 
-// GenerateToken 生成认证令牌
+// GenerateToken 生成认证令牌（JWT）
 func (m *Manager) GenerateToken(ctx context.Context, nodeID datasync.NodeID, groupID datasync.GroupID) (string, error) {
-	// 这里可以实现令牌生成逻辑
-	// 例如，使用JWT
-	return "", nil
+	now := time.Now()
+	expiresAt := now.Add(m.config.TokenTTL)
+	if m.config.TokenTTL == 0 {
+		// 默认24小时
+		expiresAt = now.Add(24 * time.Hour)
+	}
+
+	claims := JWTClaims{
+		NodeID:  string(nodeID),
+		GroupID: string(groupID),
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(expiresAt),
+			IssuedAt:  jwt.NewNumericDate(now),
+			NotBefore: jwt.NewNumericDate(now),
+			Subject:   string(nodeID),
+			Issuer:    "datasync",
+			Audience:  []string{string(groupID)},
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString(m.jwtSecret)
+	if err != nil {
+		return "", fmt.Errorf("failed to sign token: %w", err)
+	}
+
+	return tokenString, nil
 }
 
-// ValidateToken 验证令牌
-func (m *Manager) ValidateToken(ctx context.Context, token string) (*datasync.AuthToken, error) {
-	// 这里可以实现令牌验证逻辑
-	// 例如，解析JWT
-	return &datasync.AuthToken{}, nil
+// ValidateToken 验证令牌（JWT）
+func (m *Manager) ValidateToken(ctx context.Context, tokenString string) (*datasync.AuthToken, error) {
+	if tokenString == "" {
+		return nil, fmt.Errorf("token is empty")
+	}
+
+	token, err := jwt.ParseWithClaims(tokenString, &JWTClaims{}, func(token *jwt.Token) (interface{}, error) {
+		// 验证签名方法
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return m.jwtSecret, nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse token: %w", err)
+	}
+
+	if !token.Valid {
+		return nil, fmt.Errorf("token is invalid")
+	}
+
+	claims, ok := token.Claims.(*JWTClaims)
+	if !ok {
+		return nil, fmt.Errorf("invalid token claims")
+	}
+
+	return &datasync.AuthToken{
+		NodeID:    datasync.NodeID(claims.NodeID),
+		GroupID:   datasync.GroupID(claims.GroupID),
+		ExpiresAt: claims.ExpiresAt.Time,
+		IssuedAt:  claims.IssuedAt.Time,
+	}, nil
+}
+
+// RefreshToken 刷新令牌
+func (m *Manager) RefreshToken(ctx context.Context, tokenString string) (string, error) {
+	// 验证旧令牌
+	authToken, err := m.ValidateToken(ctx, tokenString)
+	if err != nil {
+		return "", fmt.Errorf("invalid token: %w", err)
+	}
+
+	// 检查令牌是否即将过期（例如，剩余时间小于1小时）
+	if authToken.ExpiresAt.After(time.Now().Add(1 * time.Hour)) {
+		return "", fmt.Errorf("token is not close to expiration")
+	}
+
+	// 生成新令牌
+	return m.GenerateToken(ctx, authToken.NodeID, authToken.GroupID)
 }

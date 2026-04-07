@@ -11,6 +11,7 @@ require (
 require (
 	github.com/cockroachdb/datadriven v1.0.3-0.20230413201302-be42291fc80f // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
+	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/klauspost/compress v1.17.2 // indirect

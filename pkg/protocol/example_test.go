@@ -59,7 +59,7 @@ func ExampleCodec_DecodeSyncMessage() {
 	env, msg, err := codec.DecodeSyncMessage(encodedData)
 	if err != nil {
 		// 在实际应用中处理错误
-		_ = err
+		fmt.Printf("Decode error: %v\n", err)
 		return
 	}
 
