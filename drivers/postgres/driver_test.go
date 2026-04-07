@@ -2,12 +2,14 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"testing"
 	"time"
 
 	datasync "github.com/joy999/datasync/pkg"
+	_ "github.com/lib/pq"
 )
 
 // getTestConfig 获取测试配置
@@ -40,8 +42,27 @@ func getEnvInt(key string, defaultValue int) int {
 
 // skipIfNoPostgres 如果没有 PostgreSQL 则跳过测试
 func skipIfNoPostgres(t *testing.T) {
-	if os.Getenv("TEST_PG_HOST") == "" && os.Getenv("SKIP_PG_TEST") != "" {
-		t.Skip("Skipping PostgreSQL tests (set TEST_PG_HOST to enable)")
+	// 如果明确设置了 SKIP_PG_TEST，则跳过
+	if os.Getenv("SKIP_PG_TEST") != "" {
+		t.Skip("Skipping PostgreSQL tests (SKIP_PG_TEST is set)")
+	}
+	
+	// 尝试连接 PostgreSQL，如果连接失败则跳过测试
+	config := getTestConfig()
+	connStr := fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=%s connect_timeout=3",
+		config.Host, config.Port, config.User, config.Password, config.Database, config.SSLMode)
+	
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		t.Skipf("Skipping PostgreSQL tests (failed to open connection: %v)", err)
+	}
+	defer db.Close()
+	
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	
+	if err := db.PingContext(ctx); err != nil {
+		t.Skipf("Skipping PostgreSQL tests (failed to ping: %v)", err)
 	}
 }
 
