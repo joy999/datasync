@@ -72,6 +72,8 @@ jobs:
     - name: Run unit tests
       run: go test -v -timeout 10m ./pkg/... ./drivers/...
       env:
+        SKIP_PG_TEST: "1"
+      env:
         NATS_URL: nats://localhost:4222
         TEST_PG_HOST: localhost
         TEST_PG_PORT: "5432"
@@ -82,6 +84,8 @@ jobs:
     - name: Run example tests
       run: go test -v -timeout 5m ./pkg/... ./drivers/...
       env:
+        SKIP_PG_TEST: "1"
+      env:
         NATS_URL: nats://localhost:4222
         TEST_PG_HOST: localhost
         TEST_PG_PORT: "5432"
@@ -91,6 +95,8 @@ jobs:
 
     - name: Run integration tests
       run: go test -v -timeout 10m -tags=integration ./pkg/... ./drivers/...
+      env:
+        SKIP_PG_TEST: "1"
       env:
         NATS_URL: nats://localhost:4222
         TEST_PG_HOST: localhost
