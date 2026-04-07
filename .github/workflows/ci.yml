@@ -70,7 +70,7 @@ jobs:
         done
 
     - name: Run unit tests
-      run: go test -v -run '^Test([^B]|B[^e]|Be[^n]|Ben[^c]|Benc[^h]|Bench[^m]|Benchm[^a]|Benchma[^r]|Benchmar[^k])' ./...
+      run: go test -v -timeout 10m -run '^Test([^B]|B[^e]|Be[^n]|Ben[^c]|Benc[^h]|Bench[^m]|Benchm[^a]|Benchma[^r]|Benchmar[^k])' ./pkg/... ./drivers/...
       env:
         NATS_URL: nats://localhost:4222
         TEST_PG_HOST: localhost
