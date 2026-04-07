@@ -43,6 +43,11 @@ jobs:
       with:
         go-version: ${{ matrix.go-version }}
 
+    - name: Install required tools
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y postgresql-client netcat-traditional
+
     - name: Cache Go modules
       uses: actions/cache@v4
       with:
@@ -59,21 +64,29 @@ jobs:
         # Wait for PostgreSQL
         for i in {1..30}; do
           pg_isready -h localhost -p 5432 -U postgres && break
-          echo "Waiting for PostgreSQL..."
+          echo "Waiting for PostgreSQL... ($i/30)"
           sleep 1
         done
+        if ! pg_isready -h localhost -p 5432 -U postgres; then
+          echo "PostgreSQL did not become ready within 30 seconds"
+          exit 1
+        fi
         # Wait for NATS
         for i in {1..30}; do
           nc -z localhost 4222 && break
-          echo "Waiting for NATS..."
+          echo "Waiting for NATS... ($i/30)"
           sleep 1
         done
+        if ! nc -z localhost 4222; then
+          echo "NATS did not become ready within 30 seconds"
+          exit 1
+        fi
+        echo "All services are ready!"
 
     - name: Run unit tests
       run: go test -v -timeout 10m ./pkg/... ./drivers/...
       env:
         SKIP_PG_TEST: "1"
-      env:
         NATS_URL: nats://localhost:4222
         TEST_PG_HOST: localhost
         TEST_PG_PORT: "5432"
@@ -82,10 +95,9 @@ jobs:
         TEST_PG_PASSWORD: postgres
 
     - name: Run example tests
-      run: go test -v -timeout 5m ./pkg/... ./drivers/...
+      run: go test -v -timeout 5m -run "^TestExample" ./pkg/... ./drivers/...
       env:
         SKIP_PG_TEST: "1"
-      env:
         NATS_URL: nats://localhost:4222
         TEST_PG_HOST: localhost
         TEST_PG_PORT: "5432"
@@ -97,7 +109,6 @@ jobs:
       run: go test -v -timeout 10m -tags=integration ./pkg/... ./drivers/...
       env:
         SKIP_PG_TEST: "1"
-      env:
         NATS_URL: nats://localhost:4222
         TEST_PG_HOST: localhost
         TEST_PG_PORT: "5432"
