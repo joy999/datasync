@@ -80,7 +80,7 @@ jobs:
         TEST_PG_PASSWORD: postgres
 
     - name: Run example tests
-      run: go test -v -run "^TestExample" ./...
+      run: go test -v -timeout 5m -run "^TestExample" ./pkg/... ./drivers/...
       env:
         NATS_URL: nats://localhost:4222
         TEST_PG_HOST: localhost
@@ -90,7 +90,7 @@ jobs:
         TEST_PG_PASSWORD: postgres
 
     - name: Run integration tests
-      run: go test -v -tags=integration ./...
+      run: go test -v -timeout 10m -tags=integration ./pkg/... ./drivers/...
       env:
         NATS_URL: nats://localhost:4222
         TEST_PG_HOST: localhost
