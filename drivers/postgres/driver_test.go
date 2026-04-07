@@ -36,7 +36,13 @@ func getEnv(key, defaultValue string) string {
 }
 
 func getEnvInt(key string, defaultValue int) int {
-	// 简化处理，直接使用默认值
+	if value := os.Getenv(key); value != "" {
+		// 尝试解析整数
+		var intVal int
+		if _, err := fmt.Sscanf(value, "%d", &intVal); err == nil {
+			return intVal
+		}
+	}
 	return defaultValue
 }
 
