@@ -70,7 +70,7 @@ jobs:
         done
 
     - name: Run unit tests
-      run: go test -v -timeout 10m -run '^Test([^B]|B[^e]|Be[^n]|Ben[^c]|Benc[^h]|Bench[^m]|Benchm[^a]|Benchma[^r]|Benchmar[^k])' ./pkg/... ./drivers/...
+      run: go test -v -timeout 10m ./pkg/... ./drivers/...
       env:
         NATS_URL: nats://localhost:4222
         TEST_PG_HOST: localhost
@@ -80,7 +80,7 @@ jobs:
         TEST_PG_PASSWORD: postgres
 
     - name: Run example tests
-      run: go test -v -timeout 5m -run "^TestExample" ./pkg/... ./drivers/...
+      run: go test -v -timeout 5m ./pkg/... ./drivers/...
       env:
         NATS_URL: nats://localhost:4222
         TEST_PG_HOST: localhost
