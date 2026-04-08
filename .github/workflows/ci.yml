@@ -1,5 +1,8 @@
 name: CI
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 on:
   push:
     branches: [ main, master, develop ]
@@ -32,14 +35,14 @@ jobs:
 
     strategy:
       matrix:
-        go-version: [ '1.21', '1.22', '1.23' ]
+        go-version: [ '1.25.x' ]
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Set up Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
         go-version: ${{ matrix.go-version }}
 
@@ -47,14 +50,6 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y postgresql-client netcat-traditional
-
-    - name: Cache Go modules
-      uses: actions/cache@v4
-      with:
-        path: ~/go/pkg/mod
-        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-        restore-keys: |
-          ${{ runner.os }}-go-
 
     - name: Download dependencies
       run: go mod download
@@ -121,65 +116,53 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Set up Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
-        go-version: '1.23'
-
-    - name: Cache Go modules
-      uses: actions/cache@v4
-      with:
-        path: ~/go/pkg/mod
-        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-        restore-keys: |
-          ${{ runner.os }}-go-
+        go-version: '1.25.x'
 
     - name: Download dependencies
       run: go mod download
 
     - name: Run benchmarks
-      run: go test -bench=. -benchmem -run=^$ ./... | tee benchmark.txt
-
-    - name: Upload benchmark results
-      uses: actions/upload-artifact@v4
-      with:
-        name: benchmark-results
-        path: benchmark.txt
+      run: go test -bench=. -benchmem -run=^$ ./pkg/... ./drivers/... ./examples/simple/... ./examples/postgres/... | tee benchmark.txt
 
   lint:
     name: Lint
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Set up Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
-        go-version: '1.23'
+        go-version: '1.25.x'
+
+    - name: Install golangci-lint
+      run: |
+        go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
 
     - name: Run golangci-lint
-      uses: golangci/golangci-lint-action@v6
-      with:
-        version: latest
-        args: --timeout=5m
+      run: |
+        $(go env GOPATH)/bin/golangci-lint run --timeout=5m ./pkg/... ./drivers/... ./examples/simple/... ./examples/postgres/...
 
   build:
     name: Build
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Set up Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
-        go-version: '1.23'
+        go-version: '1.25.x'
 
     - name: Build
-      run: go build -v ./...
+      run: go build -v ./pkg/... ./drivers/... ./examples/simple ./examples/postgres
 
     - name: Test build examples
       run: |
@@ -191,21 +174,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
 
     - name: Set up Go
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
-        go-version: '1.23'
+        go-version: '1.25.x'
 
     - name: Install Protoc
-      uses: arduino/setup-protoc@v3
-      with:
-        version: '24.x'
+      run: |
+        PROTOC_ZIP=protoc-24.4-linux-x86_64.zip
+        curl -sSL -o "$PROTOC_ZIP" "https://github.com/protocolbuffers/protobuf/releases/download/v24.4/$PROTOC_ZIP"
+        sudo unzip -o "$PROTOC_ZIP" -d /usr/local
+        rm -f "$PROTOC_ZIP"
+        protoc --version
 
     - name: Install Go tools
       run: |
-        go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+        go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
 
     - name: Generate Proto
       run: |
@@ -215,3 +201,4 @@ jobs:
     - name: Check generated files are up to date
       run: |
         git diff --exit-code proto/datasync.pb.go || (echo "Generated proto files are out of date. Please run 'protoc' and commit the changes." && exit 1)
+

@@ -60,7 +60,9 @@ func (d *Driver) Initialize(ctx context.Context, initConfig map[string]interface
 	}
 
 	if err := db.PingContext(ctx); err != nil {
-		_ = db.Close()
+		if closeErr := db.Close(); closeErr != nil {
+			return fmt.Errorf("failed to ping database: %w ( additionally failed to close db: %v )", err, closeErr)
+		}
 		return fmt.Errorf("failed to ping database: %w", err)
 	}
 
@@ -69,13 +71,17 @@ func (d *Driver) Initialize(ctx context.Context, initConfig map[string]interface
 
 	// 创建 CDC 表
 	if err := d.createCDCTable(ctx); err != nil {
-		_ = d.db.Close()
+		if closeErr := d.db.Close(); closeErr != nil {
+			return fmt.Errorf("failed to create CDC table: %w ( additionally failed to close db: %v )", err, closeErr)
+		}
 		return fmt.Errorf("failed to create CDC table: %w", err)
 	}
 
 	// 创建 Checkpoint 表
 	if err := d.createCheckpointTable(ctx); err != nil {
-		_ = d.db.Close()
+		if closeErr := d.db.Close(); closeErr != nil {
+			return fmt.Errorf("failed to create checkpoint table: %w ( additionally failed to close db: %v )", err, closeErr)
+		}
 		return fmt.Errorf("failed to create checkpoint table: %w", err)
 	}
 
@@ -108,7 +114,7 @@ func (d *Driver) SetChangeCallback(callback func(*datasync.DataRecord)) {
 }
 
 // GetRecords 分页获取记录（用于全量同步）
-func (d *Driver) GetRecords(ctx context.Context, dataType string, cursor string, limit int) ([]*datasync.DataRecord, string, error) {
+func (d *Driver) GetRecords(ctx context.Context, dataType string, cursor string, limit int) (records []*datasync.DataRecord, nextCursor string, err error) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
@@ -137,31 +143,32 @@ func (d *Driver) GetRecords(ctx context.Context, dataType string, cursor string,
 		return nil, "", fmt.Errorf("failed to query records: %w", err)
 	}
 	defer func() {
-		_ = rows.Close()
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("failed to close rows: %w", closeErr)
+		}
 	}()
 
-	var records []*datasync.DataRecord
+	records = nil
 	for rows.Next() {
-		record, err := d.scanRecord(rows, dataType)
-		if err != nil {
-			return nil, "", err
+		record, scanErr := d.scanRecord(rows, dataType)
+		if scanErr != nil {
+			return nil, "", scanErr
 		}
 		records = append(records, record)
 	}
 
-	if err := rows.Err(); err != nil {
-		return nil, "", fmt.Errorf("rows iteration error: %w", err)
+	if rowsErr := rows.Err(); rowsErr != nil {
+		return nil, "", fmt.Errorf("rows iteration error: %w", rowsErr)
 	}
 
 	// 计算下一个 cursor
 	// 查询多一条记录来判断是否有下一页
-	nextCursor := ""
+	nextCursor = ""
 	if len(records) == limit {
 		// 查询是否还有更多记录
 		checkQuery := fmt.Sprintf("SELECT 1 FROM %s ORDER BY id LIMIT 1 OFFSET %d", tableName, offset+limit)
 		var exists int
-		err := d.db.QueryRowContext(ctx, checkQuery).Scan(&exists)
-		if err == nil {
+		if scanErr := d.db.QueryRowContext(ctx, checkQuery).Scan(&exists); scanErr == nil {
 			nextCursor = fmt.Sprintf("%d", offset+limit)
 		}
 	}
@@ -297,7 +304,7 @@ func (d *Driver) GetChanges(ctx context.Context, dataType string, since time.Tim
 }
 
 // GetDataTypes 获取支持的数据类型列表
-func (d *Driver) GetDataTypes(ctx context.Context) ([]string, error) {
+func (d *Driver) GetDataTypes(ctx context.Context) (types []string, err error) {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
@@ -318,19 +325,23 @@ func (d *Driver) GetDataTypes(ctx context.Context) ([]string, error) {
 		return nil, fmt.Errorf("failed to query table names: %w", err)
 	}
 	defer func() {
-		_ = rows.Close()
+		if closeErr := rows.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("failed to close rows: %w", closeErr)
+		}
 	}()
 
-	var types []string
 	for rows.Next() {
 		var tableName string
-		if err := rows.Scan(&tableName); err != nil {
-			return nil, fmt.Errorf("failed to scan table name: %w", err)
+		if scanErr := rows.Scan(&tableName); scanErr != nil {
+			return nil, fmt.Errorf("failed to scan table name: %w", scanErr)
 		}
 		types = append(types, tableName)
 	}
 
-	return types, rows.Err()
+	if rowsErr := rows.Err(); rowsErr != nil {
+		return nil, rowsErr
+	}
+	return types, nil
 }
 
 // GetLatestVersion 获取最新版本号

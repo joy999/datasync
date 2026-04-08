@@ -5,27 +5,30 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	datasync "github.com/joy999/datasync/pkg"
 	"github.com/joy999/datasync/pkg/codec"
+	"github.com/joy999/datasync/pkg/protocol"
+	pb "github.com/joy999/datasync/proto"
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 )
 
-// Config Raft配置
+// Config 表示 Raft 节点配置。
 type Config struct {
-	NodeID           datasync.NodeID    // 节点ID
-	GroupID          datasync.GroupID   // 组ID
-	DataDir          string             // 数据目录
-	Transport        datasync.Transport // 传输层
-	HeartbeatTick    int                // 心跳间隔（tick）
-	ElectionTick     int                // 选举间隔（tick）
-	SnapshotInterval time.Duration      // 快照间隔
-	MaxSnapshotFiles int                // 最大快照文件数
+	NodeID           datasync.NodeID
+	GroupID          datasync.GroupID
+	DataDir          string
+	Transport        datasync.Transport
+	HeartbeatTick    int
+	ElectionTick     int
+	SnapshotInterval time.Duration
+	MaxSnapshotFiles int
 }
 
-// Node Raft节点实现
+// Node 封装了一个 etcd/raft 节点。
 type Node struct {
 	config      *Config
 	raftNode    raft.Node
@@ -35,165 +38,294 @@ type Node struct {
 	transport   datasync.Transport
 	isLeader    bool
 	raftConfig  *raft.Config
-	driverID    datasync.DriverID // 当前使用的驱动ID
+	codec       *protocol.Codec
 	ctx         context.Context
 	cancel      context.CancelFunc
+
+	applyCh      chan *datasync.DataRecord
+	appliedIndex uint64
+	mu           sync.RWMutex
 }
 
-// NewNode 创建新的Raft节点
+// NewNode 创建一个新的 Raft 节点。
 func NewNode(config *Config) (*Node, error) {
-	// 初始化上下文
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// 确保数据目录存在
 	dataDir := filepath.Join(config.DataDir, string(config.GroupID))
-	if err := os.MkdirAll(dataDir, 0750); err != nil {
+	if err := os.MkdirAll(dataDir, 0o750); err != nil {
 		cancel()
 		return nil, fmt.Errorf("failed to create data directory: %w", err)
 	}
 
-	// 初始化存储
 	storage := raft.NewMemoryStorage()
-
-	// 配置Raft
 	raftConfig := &raft.Config{
-		ID:              uint64(config.NodeID[0]), // 简单处理，实际应该有更复杂的ID映射
-		ElectionTick:    config.ElectionTick,
-		HeartbeatTick:   config.HeartbeatTick,
+		ID:              uint64(config.NodeID[0]),
+		ElectionTick:    10,
+		HeartbeatTick:   1,
 		Storage:         storage,
-		MaxSizePerMsg:   1024 * 1024, // 1MB
+		MaxSizePerMsg:   1024 * 1024,
 		MaxInflightMsgs: 256,
 	}
+	if config.ElectionTick > 0 {
+		raftConfig.ElectionTick = config.ElectionTick
+	}
+	if config.HeartbeatTick > 0 {
+		raftConfig.HeartbeatTick = config.HeartbeatTick
+	}
 
-	// 创建Raft节点
 	peers := []raft.Peer{{ID: uint64(config.NodeID[0])}}
 	node := raft.StartNode(raftConfig, peers)
 
-	// 初始化Raft节点
 	rn := &Node{
-		config:      config,
-		raftNode:    node,
-		raftStorage: storage,
-		peerIDs:     []uint64{uint64(config.NodeID[0])},
-		dataDir:     dataDir,
-		transport:   config.Transport,
-		isLeader:    false,
-		raftConfig:  raftConfig,
-		driverID:    0, // 初始为0，需要外部设置
-		ctx:         ctx,
-		cancel:      cancel,
+		config:       config,
+		raftNode:     node,
+		raftStorage:  storage,
+		peerIDs:      []uint64{uint64(config.NodeID[0])},
+		dataDir:      dataDir,
+		transport:    config.Transport,
+		isLeader:     false,
+		raftConfig:   raftConfig,
+		codec:        protocol.NewCodec(&protocol.Config{NodeID: string(config.NodeID), GroupID: string(config.GroupID)}),
+		ctx:          ctx,
+		cancel:       cancel,
+		applyCh:      make(chan *datasync.DataRecord, 1000),
+		appliedIndex: 0,
 	}
 
-	// 启动消息处理协程
-	go rn.processMessages()
+	if config.Transport != nil {
+		if err := rn.startSubscription(); err != nil {
+			cancel()
+			node.Stop()
+			return nil, fmt.Errorf("failed to subscribe raft transport: %w", err)
+		}
+	}
 
+	go rn.processMessages()
 	return rn, nil
 }
 
-// Start 启动Raft节点
+// Start 启动 Raft 节点，当前底层节点已在构造时启动。
 func (n *Node) Start(ctx context.Context) error {
-	// Raft节点已经在NewNode中启动
 	return nil
 }
 
-// Stop 停止Raft节点
+// Stop 停止 Raft 节点。
 func (n *Node) Stop() error {
-	// 取消上下文
 	n.cancel()
-
-	// 停止Raft节点
 	n.raftNode.Stop()
-
+	close(n.applyCh)
 	return nil
 }
 
-// IsLeader 检查是否为Leader
+// IsLeader 返回当前节点是否为 Leader。
 func (n *Node) IsLeader() bool {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
 	return n.isLeader
 }
 
-// Apply 应用数据到Raft日志
-func (n *Node) Apply(record *datasync.DataRecord) error {
-	if n.driverID == 0 {
-		return fmt.Errorf("driver ID not set")
-	}
+// GetAppliedIndex 返回最后已应用的 Raft 索引。
+func (n *Node) GetAppliedIndex() uint64 {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	return n.appliedIndex
+}
 
-	// 使用 codec 编码数据: [Varint DriverID][Payload]
-	data, err := codec.Encode(record, n.driverID)
+// GetApplyChannel 返回状态机应用通道。
+func (n *Node) GetApplyChannel() <-chan *datasync.DataRecord {
+	return n.applyCh
+}
+
+// Apply 使用给定驱动 ID 将记录提议到 Raft。
+func (n *Node) Apply(record *datasync.DataRecord, driverID datasync.DriverID) error {
+	data, err := codec.Encode(record, driverID)
 	if err != nil {
 		return fmt.Errorf("failed to encode record: %w", err)
 	}
 
-	// 应用到Raft
 	return n.raftNode.Propose(n.ctx, data)
 }
 
-// SetDriverID 设置驱动ID
-func (n *Node) SetDriverID(driverID datasync.DriverID) {
-	n.driverID = driverID
+// AddPeer 向本地 Raft 配置中添加对等节点。
+func (n *Node) AddPeer(ctx context.Context, nodeID datasync.NodeID) error {
+	peerID := uint64(nodeID[0])
+	for _, id := range n.peerIDs {
+		if id == peerID {
+			return nil
+		}
+	}
+
+	if n.isLeader {
+		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		if err := n.raftNode.ProposeConfChange(ctx, raftpb.ConfChange{Type: raftpb.ConfChangeAddNode, NodeID: peerID}); err != nil {
+			return fmt.Errorf("failed to add peer: %w", err)
+		}
+	}
+
+	n.peerIDs = append(n.peerIDs, peerID)
+	return nil
 }
 
-// processMessages 处理Raft消息
+// RemovePeer 从本地 Raft 配置中移除对等节点。
+func (n *Node) RemovePeer(ctx context.Context, nodeID datasync.NodeID) error {
+	peerID := uint64(nodeID[0])
+
+	found := false
+	for _, id := range n.peerIDs {
+		if id == peerID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("peer not found: %s", nodeID)
+	}
+
+	if n.isLeader {
+		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		if err := n.raftNode.ProposeConfChange(ctx, raftpb.ConfChange{Type: raftpb.ConfChangeRemoveNode, NodeID: peerID}); err != nil {
+			return fmt.Errorf("failed to remove peer: %w", err)
+		}
+	}
+
+	newPeers := make([]uint64, 0, len(n.peerIDs)-1)
+	for _, id := range n.peerIDs {
+		if id != peerID {
+			newPeers = append(newPeers, id)
+		}
+	}
+	n.peerIDs = newPeers
+
+	return nil
+}
+
 func (n *Node) processMessages() {
 	for {
 		select {
 		case <-n.ctx.Done():
 			return
-
-		case msg := <-n.raftNode.Ready():
-			// 处理状态更新
-			if msg.SoftState != nil {
-				n.isLeader = msg.SoftState.Lead == n.raftConfig.ID
+		case ready := <-n.raftNode.Ready():
+			if ready.SoftState != nil {
+				n.mu.Lock()
+				n.isLeader = ready.SoftState.Lead == n.raftConfig.ID
+				n.mu.Unlock()
 			}
 
-			// 处理日志
-			if len(msg.Entries) > 0 {
-				_ = n.raftStorage.Append(msg.Entries)
+			if len(ready.Entries) > 0 {
+				_ = n.raftStorage.Append(ready.Entries)
+			}
+			if ready.Snapshot.Metadata.Term != 0 || ready.Snapshot.Metadata.Index != 0 {
+				_ = n.raftStorage.ApplySnapshot(ready.Snapshot)
+			}
+			if len(ready.Messages) > 0 {
+				n.sendMessages(ready.Messages)
 			}
 
-			// 处理快照
-			if msg.Snapshot.Metadata.Term != 0 || msg.Snapshot.Metadata.Index != 0 {
-				_ = n.raftStorage.ApplySnapshot(msg.Snapshot)
-			}
-
-			// 处理消息发送
-			if len(msg.Messages) > 0 {
-				n.sendMessages(msg.Messages)
-			}
-
-			// 推进状态机
-			for _, entry := range msg.CommittedEntries {
+			for _, entry := range ready.CommittedEntries {
 				if entry.Type == raftpb.EntryNormal && len(entry.Data) > 0 {
-					// 应用到状态机
 					n.applyEntry(entry)
 				}
+				n.mu.Lock()
+				n.appliedIndex = entry.Index
+				n.mu.Unlock()
 			}
 
-			// 通知Raft节点已处理完毕
 			n.raftNode.Advance()
 		}
 	}
 }
 
-// sendMessages 发送Raft消息
 func (n *Node) sendMessages(msgs []raftpb.Message) {
-	for range msgs {
-		// 这里可以实现消息发送逻辑
-		// 例如，通过传输层发送到其他节点
-	}
-}
-
-// applyEntry 应用日志条目到状态机
-func (n *Node) applyEntry(entry raftpb.Entry) {
-	// 使用 codec 解码数据
-	record, err := codec.Decode(entry.Data)
-	if err != nil {
-		// 解码失败，记录日志但继续处理其他条目
-		// 实际生产环境应该有更完善的错误处理
+	if n.transport == nil {
 		return
 	}
 
-	// 这里可以实现状态机应用逻辑
-	// 例如，将数据存储到存储驱动
-	_ = record
+	for _, msg := range msgs {
+		payload, err := msg.Marshal()
+		if err != nil {
+			continue
+		}
+
+		raftMsg := &pb.RaftMessage{
+			Type:  convertRaftMessageType(msg.Type),
+			Data:  payload,
+			Term:  msg.Term,
+			Index: msg.Index,
+		}
+		data, err := n.codec.EncodeRaftMessage(raftMsg)
+		if err != nil {
+			continue
+		}
+		if err := n.transport.SendMessage(n.ctx, n.config.GroupID, data); err != nil {
+			continue
+		}
+	}
+}
+
+// HandleRaftMessage 将一条 Raft 消息投递给本地节点。
+func (n *Node) HandleRaftMessage(msg raftpb.Message) error {
+	if err := n.raftNode.Step(n.ctx, msg); err != nil {
+		return fmt.Errorf("failed to step raft message: %w", err)
+	}
+	return nil
+}
+
+func (n *Node) applyEntry(entry raftpb.Entry) {
+	record, err := codec.Decode(entry.Data)
+	if err != nil {
+		return
+	}
+
+	select {
+	case n.applyCh <- record:
+	default:
+	}
+}
+
+// CreateSnapshot 创建内存快照。
+func (n *Node) CreateSnapshot() (uint64, raftpb.Snapshot, error) {
+	n.mu.RLock()
+	appliedIndex := n.appliedIndex
+	n.mu.RUnlock()
+
+	snapshot, err := n.raftStorage.CreateSnapshot(appliedIndex, nil, nil)
+	if err != nil {
+		return 0, raftpb.Snapshot{}, fmt.Errorf("failed to create snapshot: %w", err)
+	}
+
+	return appliedIndex, snapshot, nil
+}
+
+func (n *Node) startSubscription() error {
+	return n.transport.Subscribe(n.ctx, n.config.GroupID, n.handleTransportMessage)
+}
+
+func (n *Node) handleTransportMessage(data []byte) {
+	env, raftMsg, err := n.codec.DecodeRaftMessage(data)
+	if err != nil {
+		return
+	}
+	if env.SourceNode == string(n.config.NodeID) {
+		return
+	}
+
+	var msg raftpb.Message
+	if err := msg.Unmarshal(raftMsg.Data); err != nil {
+		return
+	}
+
+	_ = n.HandleRaftMessage(msg)
+}
+
+func convertRaftMessageType(msgType raftpb.MessageType) pb.RaftMessage_MessageType {
+	switch msgType {
+	case raftpb.MsgSnap:
+		return pb.RaftMessage_SNAPSHOT
+	case raftpb.MsgProp, raftpb.MsgApp, raftpb.MsgAppResp, raftpb.MsgHeartbeat, raftpb.MsgHeartbeatResp:
+		return pb.RaftMessage_ENTRY
+	default:
+		return pb.RaftMessage_CONFIG
+	}
 }
