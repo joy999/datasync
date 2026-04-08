@@ -48,7 +48,11 @@ func main() {
 	if err := n.Start(ctx); err != nil {
 		panic(fmt.Errorf("failed to start node: %w", err))
 	}
-	defer n.Stop()
+	defer func() {
+		if err := n.Stop(); err != nil {
+			panic(fmt.Errorf("failed to stop node: %w", err))
+		}
+	}()
 
 	// 注册存储驱动
 	driver := memory.NewDriver("users")

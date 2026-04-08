@@ -33,7 +33,11 @@ func main() {
 	if err := driver.Initialize(ctx, nil); err != nil {
 		log.Fatalf("Failed to initialize driver: %v", err)
 	}
-	defer driver.Close()
+	defer func() {
+		if err := driver.Close(); err != nil {
+			log.Printf("Failed to close driver: %v", err)
+		}
+	}()
 
 	fmt.Println("✓ PostgreSQL driver initialized successfully")
 

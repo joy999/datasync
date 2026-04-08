@@ -354,7 +354,7 @@ func (n *NATS) DiscoverNodes(ctx context.Context, groupID datasync.GroupID) ([]d
 	n.nodesMutex.RLock()
 	defer n.nodesMutex.RUnlock()
 
-	var nodes []datasync.NodeID
+	nodes := make([]datasync.NodeID, 0, len(n.knownNodes))
 	for nodeID, info := range n.knownNodes {
 		if info.GroupID != string(groupID) {
 			continue
