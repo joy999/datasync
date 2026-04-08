@@ -32,7 +32,7 @@ jobs:
 
     strategy:
       matrix:
-        go-version: [ '1.25' ]
+        go-version: [ '1.24.x' ]
 
     steps:
     - name: Checkout code
@@ -126,7 +126,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.25'
+        go-version: '1.24.x'
 
     - name: Cache Go modules
       uses: actions/cache@v4
@@ -158,12 +158,12 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.25'
+        go-version: '1.24.x'
 
     - name: Run golangci-lint
       uses: golangci/golangci-lint-action@v6
       with:
-        version: latest
+        version: v1.64.8
         args: --timeout=5m
 
   build:
@@ -176,7 +176,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.25'
+        go-version: '1.24.x'
 
     - name: Build
       run: go build -v ./...
@@ -196,7 +196,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.25'
+        go-version: '1.24.x'
 
     - name: Install Protoc
       uses: arduino/setup-protoc@v3
@@ -205,7 +205,7 @@ jobs:
 
     - name: Install Go tools
       run: |
-        go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+        go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.11
 
     - name: Generate Proto
       run: |
