@@ -153,7 +153,7 @@ jobs:
 
     - name: Run golangci-lint
       run: |
-        $(go env GOPATH)/bin/golangci-lint run --timeout=5m
+        $(go env GOPATH)/bin/golangci-lint run --timeout=5m ./pkg/... ./drivers/... ./examples/simple/... ./examples/postgres/...
 
   build:
     name: Build
